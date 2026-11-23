@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shopee Affiliate Hub — Painel de Controle</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23EE4D2D'/%3E%3Cpath d='M9 17l5 5 9-11' stroke='%23fff' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body>
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Login Screen -->
+  <main id="login-view" class="login-shell hidden">
+    <section class="card login-card" aria-labelledby="login-title">
+      <div class="brand-badge">HUB AFILIADOS • WINDOWS LOCAL</div>
+      <h1 id="login-title">Shopee Affiliate Hub</h1>
+      <p class="muted">
+        Entre com a senha do painel para colar o Pixel da Meta, chaves da Shopee,
+        conectar o WhatsApp do grupo e editar os botões do X1.
+      </p>
+
+      <form id="login-form" class="stack-md">
+        <div class="field">
+          <label for="login-password">Senha do Painel</label>
+          <div class="input-with-action">
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Digite a senha de acesso"
+              required
+            />
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm toggle-secret"
+              data-target="login-password"
+            >
+              Mostrar
+            </button>
+          </div>
+          <p id="default-pass-hint" class="hint hidden">
+            Dica inicial: se não alterou o arquivo <code>.env</code>, a senha padrão é
+            <code>troque-esta-senha</code>.
+          </p>
+        </div>
+
+        <p id="login-error" class="error-banner hidden" role="alert"></p>
+
+        <button type="submit" class="btn btn-primary btn-full">
+          Entrar no Painel
+        </button>
+      </form>
+    </section>
+  </main>
+
+  <!-- Authenticated App -->
+  <div id="app-view" class="app-shell hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand-group">
+          <div class="brand-dot" aria-hidden="true"></div>
+          <div>
+            <div class="brand-name">Shopee Affiliate Hub</div>
+            <div class="brand-sub">Tracker Meta CAPI • Grupo Baileys • X1 Cloud API</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="header-wa-pill" class="pill pill-muted">WhatsApp: Desconectado</span>
+          <button id="btn-logout" type="button" class="btn btn-ghost btn-sm">Sair</button>
+        </div>
+      </div>
+
+      <nav class="tabs-bar" aria-label="Navegação do painel">
+        <button type="button" class="tab-btn active" data-tab="overview">Visão Geral</button>
+        <button type="button" class="tab-btn" data-tab="tracker">Meta Pixel &amp; Shopee</button>
+        <button type="button" class="tab-btn" data-tab="group">Grupo de Achadinhos</button>
+        <button type="button" class="tab-btn" data-tab="x1">X1 com IA &amp; Botões</button>
+        <button type="button" class="tab-btn" data-tab="logs">Logs</button>
+      </nav>
+    </header>
+
+    <main class="container">
+      <!-- TAB 1: OVERVIEW -->
+      <section id="tab-overview" class="tab-panel active">
+        <div class="kpi-grid">
+          <article class="card kpi-card">
+            <span class="kpi-label">Cliques Rastreados</span>
+            <strong id="kpi-clicks" class="kpi-value">0</strong>
+            <span id="kpi-clicks-24h" class="kpi-sub">0 nas últimas 24h</span>
+          </article>
+          <article class="card kpi-card">
+            <span class="kpi-label">Compras Enviadas (Meta CAPI)</span>
+            <strong id="kpi-conversions" class="kpi-value">0</strong>
+            <span class="kpi-sub">Deduplicação ativa por order_id</span>
+          </article>
+          <article class="card kpi-card">
+            <span class="kpi-label">Receita Rastreada</span>
+            <strong id="kpi-revenue" class="kpi-value">R$ 0,00</strong>
+            <span class="kpi-sub">Pedidos válidos na Shopee</span>
+          </article>
+          <article class="card kpi-card">
+            <span class="kpi-label">Automação WhatsApp</span>
+            <strong id="kpi-wa-actions" class="kpi-value">0</strong>
+            <span id="kpi-wa-sub" class="kpi-sub">0 no grupo • 0 respostas X1</span>
+          </article>
+        </div>
+
+        <div class="two-col">
+          <article class="card stack-md">
+            <div class="card-head">
+              <h2>Checklist de Conexões</h2>
+              <button id="btn-refresh-overview" type="button" class="btn btn-ghost btn-sm">
+                Atualizar
+              </button>
+            </div>
+            <div class="checklist">
+              <div class="check-row">
+                <div>
+                  <strong>1. Meta Pixel &amp; API de Conversões</strong>
+                  <p class="muted-sm">Envia vendas direto para o Gerenciador de Anúncios.</p>
+                </div>
+                <div class="check-actions">
+                  <span id="chk-meta" class="pill pill-warn">Pendente</span>
+                  <button type="button" class="btn btn-ghost btn-sm jump-tab" data-tab="tracker">
+                    Configurar
+                  </button>
+                </div>
+              </div>
+              <div class="check-row">
+                <div>
+                  <strong>2. Shopee Affiliate Open API</strong>
+                  <p class="muted-sm">Puxa pedidos antes dos 2 dias e gera links curtos.</p>
+                </div>
+                <div class="check-actions">
+                  <span id="chk-shopee" class="pill pill-warn">Pendente</span>
+                  <button type="button" class="btn btn-ghost btn-sm jump-tab" data-tab="tracker">
+                    Configurar
+                  </button>
+                </div>
+              </div>
+              <div class="check-row">
+                <div>
+                  <strong>3. Grupo de Achadinhos (QR + Grupo)</strong>
+                  <p class="muted-sm">Posta ofertas inéditas automaticamente no grupo.</p>
+                </div>
+                <div class="check-actions">
+                  <span id="chk-group" class="pill pill-warn">Pendente</span>
+                  <button type="button" class="btn btn-ghost btn-sm jump-tab" data-tab="group">
+                    Conectar
+                  </button>
+                </div>
+              </div>
+              <div class="check-row">
+                <div>
+                  <strong>4. X1 Oficial com IA &amp; Botões</strong>
+                  <p class="muted-sm">Atende leads no privado e entrega links ao clique.</p>
+                </div>
+                <div class="check-actions">
+                  <span id="chk-x1" class="pill pill-warn">Pendente</span>
+                  <button type="button" class="btn btn-ghost btn-sm jump-tab" data-tab="x1">
+                    Configurar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card stack-md">
+            <h2>Endereço Público &amp; Webhook da Meta</h2>
+            <p class="muted-sm">
+              Quando abrir o túnel público (<code>ABRIR_TUNEL_PUBLICO.bat</code>), cole a URL
+              <code>https://...trycloudflare.com</code> abaixo e salve para copiar seus links prontos.
+            </p>
+            <div class="field">
+              <label for="ov-public-url">URL Pública Atual</label>
+              <div class="input-with-action">
+                <input id="ov-public-url" type="url" placeholder="https://seu-tunel.trycloudflare.com" />
+                <button id="btn-save-public-url" type="button" class="btn btn-primary btn-sm">
+                  Salvar URL
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="ov-webhook-url">URL de Callback do Webhook (colar na Meta)</label>
+              <div class="input-with-action">
+                <input id="ov-webhook-url" type="text" readonly />
+                <button type="button" class="btn btn-ghost btn-sm copy-btn" data-copy-target="ov-webhook-url">
+                  Copiar
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="ov-verify-token">Token de Verificação do Webhook</label>
+              <div class="input-with-action">
+                <input id="ov-verify-token" type="text" readonly />
+                <button type="button" class="btn btn-ghost btn-sm copy-btn" data-copy-target="ov-verify-token">
+                  Copiar
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB 2: TRACKER (META + SHOPEE) -->
+      <section id="tab-tracker" class="tab-panel">
+        <form id="tracker-settings-form" class="card stack-md">
+          <div class="card-head">
+            <div>
+              <h2>Credenciais Meta Pixel &amp; Shopee</h2>
+              <p class="muted-sm">Cole os dados do Gerenciador de Negócios e da Shopee Afiliados.</p>
+            </div>
+            <div class="btn-row">
+              <button id="btn-test-capi" type="button" class="btn btn-secondary">
+                Testar Pixel (CAPI)
+              </button>
+              <button id="btn-sync-now" type="button" class="btn btn-secondary">
+                Sincronizar Vendas Agora
+              </button>
+              <button type="submit" class="btn btn-primary">
+                Salvar Chaves
+              </button>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="set-meta-pixel-id">Meta Pixel ID (Dataset ID)</label>
+              <input id="set-meta-pixel-id" name="meta_pixel_id" type="text" placeholder="Ex: 1707241907778178" />
+            </div>
+            <div class="field">
+              <label for="set-meta-test-code">Test Event Code (opcional para testes)</label>
+              <input id="set-meta-test-code" name="meta_test_event_code" type="text" placeholder="Ex: TEST12345" />
+            </div>
+            <div class="field span-2">
+              <label for="set-meta-capi-token">Token da API de Conversões (CAPI Access Token)</label>
+              <div class="input-with-action">
+                <input id="set-meta-capi-token" name="meta_capi_token" type="password" placeholder="EAA..." />
+                <button type="button" class="btn btn-ghost btn-sm toggle-secret" data-target="set-meta-capi-token">
+                  Mostrar
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="set-shopee-app-id">Shopee AppId</label>
+              <input id="set-shopee-app-id" name="shopee_app_id" type="text" placeholder="Seu AppId de afiliado Shopee" />
+            </div>
+            <div class="field">
+              <label for="set-shopee-secret">Shopee App Secret</label>
+              <div class="input-with-action">
+                <input id="set-shopee-secret" name="shopee_secret" type="password" placeholder="Seu Secret da Shopee" />
+                <button type="button" class="btn btn-ghost btn-sm toggle-secret" data-target="set-shopee-secret">
+                  Mostrar
+                </button>
+              </div>
+            </div>
+            <div class="field span-2">
+              <label for="set-shopee-url">Endpoint GraphQL da Shopee</label>
+              <input
+                id="set-shopee-url"
+                name="shopee_graphql_url"
+                type="url"
+                placeholder="https://open-api.affiliate.shopee.com.br/graphql"
+              />
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input id="set-include-unpaid" name="capi_include_unpaid" type="checkbox" />
+            <span>Marcar também pedidos aguardando pagamento (Pix/Boleto UNPAID) como compra na Meta</span>
+          </label>
+        </form>
+
+        <div class="two-col">
+          <form id="campaign-form" class="card stack-md">
+            <h2>Criar Link Rastreável para Anúncios</h2>
+            <p class="muted-sm">
+              Use o link <code>/go/apelido</code> nos anúncios do Facebook/Instagram. O sistema salva o
+              <code>fbclid</code> e redireciona com <code>sub_id</code> para a Shopee.
+            </p>
+            <div class="form-grid">
+              <div class="field">
+                <label for="camp-slug">Apelido do Link (slug)</label>
+                <input id="camp-slug" type="text" placeholder="ex: fone-bluetooth" required />
+              </div>
+              <div class="field">
+                <label for="camp-value">Ticket Médio Estimado (R$)</label>
+                <input id="camp-value" type="number" step="0.01" min="0" placeholder="49.90" />
+              </div>
+              <div class="field span-2">
+                <label for="camp-title">Nome da Campanha / Produto</label>
+                <input id="camp-title" type="text" placeholder="Ex: Fone Bluetooth Oferta" />
+              </div>
+              <div class="field span-2">
+                <label for="camp-dest">Link da Shopee de Destino</label>
+                <input id="camp-dest" type="url" placeholder="https://shopee.com.br/..." required />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Criar / Atualizar Link</button>
+          </form>
+
+          <article class="card stack-md">
+            <h2>Links de Campanha Ativos</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Link para Anúncio</th>
+                    <th>Destino</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="campaigns-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <article class="card stack-md">
+          <h2>Últimas Conversões Shopee → Meta CAPI</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pedido Shopee</th>
+                  <th>Click ID</th>
+                  <th>Status Shopee</th>
+                  <th>Valor</th>
+                  <th>Status Meta CAPI</th>
+                </tr>
+              </thead>
+              <tbody id="conversions-tbody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- TAB 3: GRUPO ACHADINHOS -->
+      <section id="tab-group" class="tab-panel">
+        <div class="two-col">
+          <article class="card stack-md">
+            <div class="card-head">
+              <div>
+                <h2>Conexão WhatsApp (Grupo)</h2>
+                <p class="muted-sm">Use um chip secundário e leia o QR Code abaixo.</p>
+              </div>
+              <span id="baileys-status-pill" class="pill pill-muted">Desconectado</span>
+            </div>
+
+            <div class="btn-row">
+              <button id="btn-wa-connect" type="button" class="btn btn-primary">
+                Conectar / Gerar QR Code
+              </button>
+              <button id="btn-wa-groups" type="button" class="btn btn-secondary">
+                Buscar Meus Grupos
+              </button>
+              <button id="btn-wa-logout" type="button" class="btn btn-danger">
+                Desconectar
+              </button>
+            </div>
+
+            <div id="qr-box" class="qr-box hidden">
+              <p class="muted-sm">Abra o WhatsApp no celular → Aparelhos conectados → Conectar aparelho:</p>
+              <img id="qr-image" alt="QR Code para conectar WhatsApp" />
+            </div>
+
+            <p id="baileys-info" class="muted-sm"></p>
+          </article>
+
+          <form id="group-settings-form" class="card stack-md">
+            <div class="card-head">
+              <h2>Regras de Envio no Grupo</h2>
+              <button id="btn-dispatch-now" type="button" class="btn btn-secondary">
+                Disparar 1 Achadinho Agora
+              </button>
+            </div>
+
+            <div class="field">
+              <label for="group-select">Selecionar Grupo (carregado após conectar)</label>
+              <select id="group-select">
+                <option value="">-- Clique em "Buscar Meus Grupos" --</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="set-group-jid">ID do Grupo de WhatsApp (JID)</label>
+              <input id="set-group-jid" name="whatsapp_group_jid" type="text" placeholder="120363...@g.us" />
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="set-group-interval">Intervalo entre envios (minutos)</label>
+                <input id="set-group-interval" name="group_interval_minutes" type="number" min="5" max="720" />
+              </div>
+              <div class="field">
+                <label for="set-group-hours">Janela ativa (Início / Fim)</label>
+                <div class="two-inline">
+                  <input id="set-group-start" name="group_active_start_hour" type="number" min="0" max="23" aria-label="Hora de início" />
+                  <input id="set-group-end" name="group_active_end_hour" type="number" min="0" max="23" aria-label="Hora de fim" />
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="set-shopee-keywords">Palavras-chave de busca na Shopee (separadas por vírgula)</label>
+              <input
+                id="set-shopee-keywords"
+                name="shopee_keywords"
+                type="text"
+                placeholder="oferta relampago,casa inteligente,cozinha"
+              />
+            </div>
+
+            <label class="checkbox-row">
+              <input id="set-group-enabled" name="group_dispatch_enabled" type="checkbox" />
+              <span>Ativar envio automático programado no grupo</span>
+            </label>
+
+            <button type="submit" class="btn btn-primary">Salvar Regras do Grupo</button>
+          </form>
+        </div>
+
+        <article class="card stack-md">
+          <h2>Últimos Achadinhos Enviados (Sem Repetição)</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Preço</th>
+                  <th>Link Curto</th>
+                </tr>
+              </thead>
+              <tbody id="offers-tbody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- TAB 4: X1 BOT -->
+      <section id="tab-x1" class="tab-panel">
+        <form id="x1-settings-form" class="stack-lg">
+          <article class="card stack-md">
+            <div class="card-head">
+              <div>
+                <h2>WhatsApp Cloud API Oficial (X1) &amp; Inteligência Artificial</h2>
+                <p class="muted-sm">Conecte seu número oficial da Meta e a chave de IA (Gemini ou OpenAI).</p>
+              </div>
+              <button type="submit" class="btn btn-primary">Salvar X1 e Botões</button>
+            </div>
+
+            <div class="form-grid">
+              <div class="field span-2">
+                <label for="set-wa-token">Meta WhatsApp Permanent Token</label>
+                <div class="input-with-action">
+                  <input id="set-wa-token" name="meta_whatsapp_token" type="password" placeholder="EAA..." />
+                  <button type="button" class="btn btn-ghost btn-sm toggle-secret" data-target="set-wa-token">
+                    Mostrar
+                  </button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="set-wa-phone-id">Phone Number ID</label>
+                <input id="set-wa-phone-id" name="meta_phone_number_id" type="text" placeholder="Ex: 512345678901234" />
+              </div>
+              <div class="field">
+                <label for="set-wa-verify">Webhook Verify Token</label>
+                <input id="set-wa-verify" name="meta_webhook_verify_token" type="text" />
+              </div>
+              <div class="field">
+                <label for="set-ai-provider">Provedor de IA</label>
+                <select id="set-ai-provider" name="ai_provider">
+                  <option value="gemini">Google Gemini</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="set-ai-model">Modelo de IA</label>
+                <input id="set-ai-model" name="ai_model" type="text" placeholder="gemini-2.5-flash" />
+              </div>
+              <div class="field span-2">
+                <label for="set-ai-key">Chave da API de IA (AI API Key)</label>
+                <div class="input-with-action">
+                  <input id="set-ai-key" name="ai_api_key" type="password" placeholder="AIza... ou sk-..." />
+                  <button type="button" class="btn btn-ghost btn-sm toggle-secret" data-target="set-ai-key">
+                    Mostrar
+                  </button>
+                </div>
+              </div>
+              <div class="field span-2">
+                <label for="set-x1-prompt">Instrução da IA no Atendimento X1 (Prompt)</label>
+                <textarea id="set-x1-prompt" name="x1_system_prompt" rows="3"></textarea>
+              </div>
+            </div>
+          </article>
+
+          <article class="card stack-md">
+            <div>
+              <h2>Botões Clicáveis do X1 (Máximo 3 botões • Limite Meta: 20 caracteres no título)</h2>
+              <p class="muted-sm">
+                Quando o cliente responder no privado, a IA envia a resposta junto com estes botões.
+                Ao clicar, ele recebe imediatamente o texto e o link configurados abaixo.
+              </p>
+            </div>
+
+            <div id="x1-buttons-editor" class="buttons-grid"></div>
+
+            <div>
+              <button type="submit" class="btn btn-primary">Salvar X1 e Botões</button>
+            </div>
+          </article>
+        </form>
+      </section>
+
+      <!-- TAB 5: LOGS -->
+      <section id="tab-logs" class="tab-panel">
+        <article class="card stack-md">
+          <div class="card-head">
+            <h2>Atividade e Diagnóstico em Tempo Real</h2>
+            <button id="btn-refresh-logs" type="button" class="btn btn-secondary btn-sm">
+              Atualizar Logs
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Módulo</th>
+                  <th>Nível</th>
+                  <th>Mensagem</th>
+                </tr>
+              </thead>
+              <tbody id="logs-tbody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin/app.js" defer></script>
+</body>
+</html>

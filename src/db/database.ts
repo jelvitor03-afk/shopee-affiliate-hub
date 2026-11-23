@@ -1,0 +1,589 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { AppConfig } from '../config/env.js';
+
+export type SettingKey =
+  | 'meta_pixel_id'
+  | 'meta_capi_token'
+  | 'meta_test_event_code'
+  | 'capi_include_unpaid'
+  | 'shopee_app_id'
+  | 'shopee_secret'
+  | 'shopee_graphql_url'
+  | 'public_base_url'
+  | 'whatsapp_group_jid'
+  | 'whatsapp_group_name'
+  | 'group_dispatch_enabled'
+  | 'group_interval_minutes'
+  | 'group_active_start_hour'
+  | 'group_active_end_hour'
+  | 'shopee_keywords'
+  | 'meta_whatsapp_token'
+  | 'meta_phone_number_id'
+  | 'meta_webhook_verify_token'
+  | 'ai_provider'
+  | 'ai_api_key'
+  | 'ai_model'
+  | 'x1_system_prompt'
+  | 'x1_buttons_json'
+  | 'session_secret';
+
+export type HubSettings = Record<SettingKey, string>;
+
+export interface X1ButtonConfig {
+  id: string;
+  title: string;
+  replyText: string;
+  linkUrl: string;
+}
+
+export interface CampaignLink {
+  slug: string;
+  title: string;
+  destination_url: string;
+  default_value: number;
+  created_at: number;
+}
+
+export interface AdClickRecord {
+  click_id: string;
+  slug: string;
+  fbclid: string | null;
+  fbp: string | null;
+  fbc: string | null;
+  client_ip: string | null;
+  user_agent: string | null;
+  utm_source: string | null;
+  utm_campaign: string | null;
+  short_url: string | null;
+  created_at: number;
+}
+
+export interface ConversionSentRecord {
+  order_id: string;
+  conversion_id: string | null;
+  click_id: string | null;
+  order_status: string;
+  order_value: number;
+  currency: string;
+  capi_status: string;
+  capi_response: string | null;
+  created_at: number;
+}
+
+export interface DispatchedOfferRecord {
+  item_id: string;
+  group_jid: string;
+  product_name: string;
+  short_link: string;
+  price: string;
+  sent_at: number;
+}
+
+export interface SystemLogRecord {
+  id: number;
+  level: string;
+  module: string;
+  message: string;
+  details: string | null;
+  created_at: number;
+}
+
+export interface DashboardStats {
+  totalClicks: number;
+  clicks24h: number;
+  totalConversionsSent: number;
+  totalTrackedRevenue: number;
+  totalDispatchedOffers: number;
+  totalX1Messages: number;
+}
+
+const DEFAULT_X1_BUTTONS: X1ButtonConfig[] = [
+  {
+    id: 'btn_1',
+    title: 'Ver Oferta Hoje',
+    replyText: 'Aqui esta o link oficial da oferta em destaque hoje na Shopee:',
+    linkUrl: 'https://shopee.com.br'
+  },
+  {
+    id: 'btn_2',
+    title: 'Entrar no Grupo',
+    replyText: 'Entre no nosso grupo VIP de achadinhos diarios com desconto:',
+    linkUrl: 'https://chat.whatsapp.com'
+  },
+  {
+    id: 'btn_3',
+    title: 'Mais Promocoes',
+    replyText: 'Confira a selecao completa de produtos com frete gratis:',
+    linkUrl: 'https://shopee.com.br'
+  }
+];
+
+const DEFAULT_X1_PROMPT =
+  'Voce e a assistente virtual de compras da loja. Responda sempre em portugues do Brasil de forma simpatica, direta e curta (no maximo 3 frases). Tire duvidas rapidas sobre ofertas da Shopee e oriente a pessoa a clicar em um dos botoes abaixo para pegar o link oficial.';
+
+export function normalizeX1Buttons(rawJson: string): X1ButtonConfig[] {
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_X1_BUTTONS;
+    const valid = parsed
+      .slice(0, 3)
+      .map((item, idx) => {
+        const obj = (item && typeof item === 'object' ? item : {}) as Record<
+          string,
+          unknown
+        >;
+        const title = String(obj.title ?? `Opcao ${idx + 1}`).trim().slice(0, 20);
+        return {
+          id: String(obj.id ?? `btn_${idx + 1}`).replace(/[^a-zA-Z0-9_-]/g, '') || `btn_${idx + 1}`,
+          title: title || `Opcao ${idx + 1}`,
+          replyText: String(obj.replyText ?? '').trim().slice(0, 800),
+          linkUrl: String(obj.linkUrl ?? '').trim().slice(0, 1000)
+        };
+      })
+      .filter((btn) => btn.title.length > 0);
+    return valid.length > 0 ? valid : DEFAULT_X1_BUTTONS;
+  } catch {
+    return DEFAULT_X1_BUTTONS;
+  }
+}
+
+export class HubDatabase {
+  private readonly db: DatabaseSync;
+
+  constructor(config: AppConfig) {
+    fs.mkdirSync(config.dataDir, { recursive: true });
+    const dbPath = path.join(config.dataDir, 'hub.sqlite');
+    this.db = new DatabaseSync(dbPath);
+    this.db.exec('PRAGMA journal_mode = WAL;');
+    this.db.exec('PRAGMA foreign_keys = ON;');
+    this.initSchema();
+    this.seedDefaults(config);
+  }
+
+  private initSchema(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS campaign_links (
+        slug TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        destination_url TEXT NOT NULL,
+        default_value REAL NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS ad_clicks (
+        click_id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL,
+        fbclid TEXT,
+        fbp TEXT,
+        fbc TEXT,
+        client_ip TEXT,
+        user_agent TEXT,
+        utm_source TEXT,
+        utm_campaign TEXT,
+        short_url TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS conversions_sent (
+        order_id TEXT PRIMARY KEY,
+        conversion_id TEXT,
+        click_id TEXT,
+        order_status TEXT NOT NULL,
+        order_value REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'BRL',
+        capi_status TEXT NOT NULL,
+        capi_response TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS dispatched_offers (
+        item_id TEXT NOT NULL,
+        group_jid TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        short_link TEXT NOT NULL,
+        price TEXT NOT NULL,
+        sent_at INTEGER NOT NULL,
+        PRIMARY KEY (item_id, group_jid)
+      );
+
+      CREATE TABLE IF NOT EXISTS x1_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        wa_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_x1_messages_wa_id
+        ON x1_messages (wa_id, id DESC);
+
+      CREATE TABLE IF NOT EXISTS processed_webhook_ids (
+        message_id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        level TEXT NOT NULL,
+        module TEXT NOT NULL,
+        message TEXT NOT NULL,
+        details TEXT,
+        created_at INTEGER NOT NULL
+      );
+    `);
+  }
+
+  private seedDefaults(config: AppConfig): void {
+    const now = Math.floor(Date.now() / 1000);
+    const sessionSecret =
+      config.sessionSecret || crypto.randomBytes(32).toString('hex');
+
+    const defaults: Record<SettingKey, string> = {
+      meta_pixel_id: config.seedSettings.meta_pixel_id,
+      meta_capi_token: config.seedSettings.meta_capi_token,
+      meta_test_event_code: config.seedSettings.meta_test_event_code,
+      capi_include_unpaid: 'false',
+      shopee_app_id: config.seedSettings.shopee_app_id,
+      shopee_secret: config.seedSettings.shopee_secret,
+      shopee_graphql_url: config.seedSettings.shopee_graphql_url,
+      public_base_url: config.seedSettings.public_base_url,
+      whatsapp_group_jid: config.seedSettings.whatsapp_group_jid,
+      whatsapp_group_name: '',
+      group_dispatch_enabled: 'false',
+      group_interval_minutes: '60',
+      group_active_start_hour: '8',
+      group_active_end_hour: '22',
+      shopee_keywords: config.seedSettings.shopee_keywords,
+      meta_whatsapp_token: config.seedSettings.meta_whatsapp_token,
+      meta_phone_number_id: config.seedSettings.meta_phone_number_id,
+      meta_webhook_verify_token: config.seedSettings.meta_webhook_verify_token,
+      ai_provider: config.seedSettings.ai_provider,
+      ai_api_key: config.seedSettings.ai_api_key,
+      ai_model: config.seedSettings.ai_model,
+      x1_system_prompt: DEFAULT_X1_PROMPT,
+      x1_buttons_json: JSON.stringify(DEFAULT_X1_BUTTONS),
+      session_secret: sessionSecret
+    };
+
+    const stmt = this.db.prepare(
+      'INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)'
+    );
+    for (const [key, value] of Object.entries(defaults)) {
+      stmt.run(key, value, now);
+    }
+  }
+
+  getAllSettings(): HubSettings {
+    const rows = this.db
+      .prepare('SELECT key, value FROM settings')
+      .all() as Array<{ key: string; value: string }>;
+    const map: Record<string, string> = {};
+    for (const row of rows) {
+      map[row.key] = row.value;
+    }
+    return map as HubSettings;
+  }
+
+  getSetting(key: SettingKey): string {
+    const row = this.db
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? '';
+  }
+
+  updateSettings(patch: Partial<Record<SettingKey, string>>): HubSettings {
+    const now = Math.floor(Date.now() / 1000);
+    const stmt = this.db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `);
+
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined || key === 'session_secret') continue;
+      let normalized = String(value).trim();
+      if (key === 'x1_buttons_json') {
+        normalized = JSON.stringify(normalizeX1Buttons(normalized));
+      }
+      stmt.run(key, normalized, now);
+    }
+    return this.getAllSettings();
+  }
+
+  upsertCampaignLink(input: {
+    slug: string;
+    title: string;
+    destinationUrl: string;
+    defaultValue?: number;
+  }): CampaignLink {
+    const cleanSlug = input.slug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '');
+    if (!cleanSlug) {
+      throw new Error('Slug da campanha invalido. Use apenas letras e numeros.');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const defaultValue = Number.isFinite(input.defaultValue)
+      ? Number(input.defaultValue)
+      : 0;
+    this.db
+      .prepare(
+        `INSERT INTO campaign_links (slug, title, destination_url, default_value, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET
+           title = excluded.title,
+           destination_url = excluded.destination_url,
+           default_value = excluded.default_value`
+      )
+      .run(
+        cleanSlug,
+        input.title.trim() || cleanSlug,
+        input.destinationUrl.trim(),
+        defaultValue,
+        now
+      );
+
+    return this.getCampaignLink(cleanSlug)!;
+  }
+
+  getCampaignLink(slug: string): CampaignLink | null {
+    const row = this.db
+      .prepare(
+        'SELECT slug, title, destination_url, default_value, created_at FROM campaign_links WHERE slug = ?'
+      )
+      .get(slug) as unknown as CampaignLink | undefined;
+    return row ?? null;
+  }
+
+  listCampaignLinks(): CampaignLink[] {
+    return this.db
+      .prepare(
+        'SELECT slug, title, destination_url, default_value, created_at FROM campaign_links ORDER BY created_at DESC'
+      )
+      .all() as unknown as CampaignLink[];
+  }
+
+  deleteCampaignLink(slug: string): boolean {
+    const res = this.db
+      .prepare('DELETE FROM campaign_links WHERE slug = ?')
+      .run(slug);
+    return res.changes > 0;
+  }
+
+  recordAdClick(input: Omit<AdClickRecord, 'created_at'>): AdClickRecord {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        `INSERT INTO ad_clicks (
+          click_id, slug, fbclid, fbp, fbc, client_ip, user_agent, utm_source, utm_campaign, short_url, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.click_id,
+        input.slug,
+        input.fbclid,
+        input.fbp,
+        input.fbc,
+        input.client_ip,
+        input.user_agent,
+        input.utm_source,
+        input.utm_campaign,
+        input.short_url,
+        now
+      );
+    return { ...input, created_at: now };
+  }
+
+  getAdClick(clickId: string): AdClickRecord | null {
+    const row = this.db
+      .prepare('SELECT * FROM ad_clicks WHERE click_id = ?')
+      .get(clickId) as unknown as AdClickRecord | undefined;
+    return row ?? null;
+  }
+
+  listRecentClicks(limit = 30): AdClickRecord[] {
+    return this.db
+      .prepare('SELECT * FROM ad_clicks ORDER BY created_at DESC LIMIT ?')
+      .all(limit) as unknown as AdClickRecord[];
+  }
+
+  isConversionSent(orderId: string): boolean {
+    const row = this.db
+      .prepare("SELECT order_id FROM conversions_sent WHERE order_id = ? AND capi_status = 'SENT'")
+      .get(orderId) as { order_id: string } | undefined;
+    return Boolean(row);
+  }
+
+  upsertConversionRecord(
+    input: Omit<ConversionSentRecord, 'created_at'>
+  ): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        `INSERT INTO conversions_sent (
+          order_id, conversion_id, click_id, order_status, order_value, currency, capi_status, capi_response, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(order_id) DO UPDATE SET
+          order_status = excluded.order_status,
+          order_value = excluded.order_value,
+          capi_status = excluded.capi_status,
+          capi_response = excluded.capi_response,
+          created_at = excluded.created_at`
+      )
+      .run(
+        input.order_id,
+        input.conversion_id,
+        input.click_id,
+        input.order_status,
+        input.order_value,
+        input.currency,
+        input.capi_status,
+        input.capi_response,
+        now
+      );
+  }
+
+  listRecentConversions(limit = 40): ConversionSentRecord[] {
+    return this.db
+      .prepare('SELECT * FROM conversions_sent ORDER BY created_at DESC LIMIT ?')
+      .all(limit) as unknown as ConversionSentRecord[];
+  }
+
+  hasDispatchedOffer(itemId: string, groupJid: string): boolean {
+    const row = this.db
+      .prepare(
+        'SELECT item_id FROM dispatched_offers WHERE item_id = ? AND group_jid = ?'
+      )
+      .get(itemId, groupJid) as { item_id: string } | undefined;
+    return Boolean(row);
+  }
+
+  recordDispatchedOffer(input: Omit<DispatchedOfferRecord, 'sent_at'>): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO dispatched_offers (item_id, group_jid, product_name, short_link, price, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.item_id,
+        input.group_jid,
+        input.product_name,
+        input.short_link,
+        input.price,
+        now
+      );
+  }
+
+  listDispatchedOffers(limit = 30): DispatchedOfferRecord[] {
+    return this.db
+      .prepare('SELECT * FROM dispatched_offers ORDER BY sent_at DESC LIMIT ?')
+      .all(limit) as unknown as DispatchedOfferRecord[];
+  }
+
+  appendX1Message(
+    waId: string,
+    role: 'user' | 'assistant',
+    content: string
+  ): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        'INSERT INTO x1_messages (wa_id, role, content, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(waId, role, content, now);
+  }
+
+  getRecentX1History(
+    waId: string,
+    limit = 8
+  ): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const rows = this.db
+      .prepare(
+        'SELECT role, content FROM x1_messages WHERE wa_id = ? ORDER BY id DESC LIMIT ?'
+      )
+      .all(waId, limit) as Array<{ role: 'user' | 'assistant'; content: string }>;
+    return rows.reverse();
+  }
+
+  markWebhookProcessedIfNew(messageId: string): boolean {
+    const now = Math.floor(Date.now() / 1000);
+    const res = this.db
+      .prepare(
+        'INSERT OR IGNORE INTO processed_webhook_ids (message_id, created_at) VALUES (?, ?)'
+      )
+      .run(messageId, now);
+    return res.changes > 0;
+  }
+
+  addLog(
+    level: 'info' | 'warn' | 'error',
+    moduleName: string,
+    message: string,
+    details?: string
+  ): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        'INSERT INTO system_logs (level, module, message, details, created_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(level, moduleName, message, details ?? null, now);
+
+    // Ring buffer: keep latest 300 entries
+    this.db
+      .prepare(
+        'DELETE FROM system_logs WHERE id NOT IN (SELECT id FROM system_logs ORDER BY id DESC LIMIT 300)'
+      )
+      .run();
+  }
+
+  listLogs(limit = 80): SystemLogRecord[] {
+    return this.db
+      .prepare('SELECT * FROM system_logs ORDER BY id DESC LIMIT ?')
+      .all(limit) as unknown as SystemLogRecord[];
+  }
+
+  getDashboardStats(): DashboardStats {
+    const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+    const clicksRow = this.db
+      .prepare('SELECT COUNT(*) AS cnt FROM ad_clicks')
+      .get() as { cnt: number };
+    const clicks24Row = this.db
+      .prepare('SELECT COUNT(*) AS cnt FROM ad_clicks WHERE created_at >= ?')
+      .get(dayAgo) as { cnt: number };
+    const convRow = this.db
+      .prepare(
+        "SELECT COUNT(*) AS cnt, COALESCE(SUM(order_value), 0) AS rev FROM conversions_sent WHERE capi_status = 'SENT'"
+      )
+      .get() as { cnt: number; rev: number };
+    const offersRow = this.db
+      .prepare('SELECT COUNT(*) AS cnt FROM dispatched_offers')
+      .get() as { cnt: number };
+    const x1Row = this.db
+      .prepare("SELECT COUNT(*) AS cnt FROM x1_messages WHERE role = 'assistant'")
+      .get() as { cnt: number };
+
+    return {
+      totalClicks: clicksRow.cnt,
+      clicks24h: clicks24Row.cnt,
+      totalConversionsSent: convRow.cnt,
+      totalTrackedRevenue: Number((convRow.rev || 0).toFixed(2)),
+      totalDispatchedOffers: offersRow.cnt,
+      totalX1Messages: x1Row.cnt
+    };
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
