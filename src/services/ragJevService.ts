@@ -12,17 +12,27 @@ export interface JevEvaluationResult {
   checkpointReply?: string;
 }
 
-const SMALL_TALK_PHRASES = [
+const SMALL_TALK_WORDS = new Set([
   'oi',
   'ola',
-  'bom dia',
-  'boa tarde',
-  'boa noite',
-  'tudo bem',
+  'opa',
+  'eai',
+  'bom',
+  'boa',
+  'dia',
+  'tarde',
+  'noite',
+  'tudo',
+  'bem',
+  'joia',
+  'beleza',
   'obrigado',
   'obrigada',
-  'valeu'
-];
+  'valeu',
+  'ai',
+  'voce',
+  'com'
+]);
 
 const PT_STOPWORDS = new Set([
   'a', 'o', 'e', 'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos', 'nas',
@@ -56,7 +66,14 @@ export class RagJevService {
   routeIntent(query: string): LeadIntent {
     const clean = normalizePt(query);
     if (/^[123]$/.test(clean)) return 'quick_option';
-    if (SMALL_TALK_PHRASES.includes(clean)) return 'small_talk';
+    const words = clean.split(' ').filter(Boolean);
+    if (
+      words.length > 0 &&
+      words.length <= 6 &&
+      words.every((w) => SMALL_TALK_WORDS.has(w))
+    ) {
+      return 'small_talk';
+    }
     return 'product_query';
   }
 

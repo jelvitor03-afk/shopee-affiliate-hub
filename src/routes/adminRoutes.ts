@@ -43,6 +43,7 @@ const EDITABLE_SETTING_KEYS: readonly SettingKey[] = [
   'meta_whatsapp_token',
   'meta_phone_number_id',
   'meta_webhook_verify_token',
+  'meta_app_secret',
   'x1_enabled',
   'x1_channel',
   'ai_provider',
@@ -150,23 +151,38 @@ export function createAdminRoutes(deps: {
     next();
   };
 
+  const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
   router.get('/session', (req, res) => {
     const cookies = (req.cookies ?? {}) as Record<string, string | undefined>;
     const secret = db.getSetting('session_secret');
     const authenticated = verifySessionToken(cookies[SESSION_COOKIE], secret);
-    res.json({
-      authenticated,
-      usingDefaultPassword: config.adminPassword === 'troque-esta-senha'
-    });
+    res.json({ authenticated });
   });
 
   router.post('/login', (req, res) => {
+    const ip = req.ip || 'local';
+    const now = Date.now();
+    const record = loginAttempts.get(ip);
+    if (record && record.resetAt > now && record.count >= 6) {
+      res.status(429).json({
+        error: 'Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.'
+      });
+      return;
+    }
+
     const password = String((req.body as { password?: string })?.password || '');
     if (!constantTimeEquals(password, config.adminPassword)) {
+      const nextCount = record && record.resetAt > now ? record.count + 1 : 1;
+      loginAttempts.set(ip, {
+        count: nextCount,
+        resetAt: record && record.resetAt > now ? record.resetAt : now + 10 * 60 * 1000
+      });
       res.status(401).json({ error: 'Senha incorreta.' });
       return;
     }
 
+    loginAttempts.delete(ip);
     const secret = db.getSetting('session_secret');
     const token = signSessionToken(secret);
     res.cookie(SESSION_COOKIE, token, {

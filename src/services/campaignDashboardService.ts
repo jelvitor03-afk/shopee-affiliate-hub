@@ -277,37 +277,49 @@ export class CampaignDashboardService {
       });
 
       for (const node of report.nodes) {
-        const subParts = (node.utmContent || '')
-          .split('-')
-          .map((p) => sanitizeSubId(p.toLowerCase()))
-          .filter(Boolean);
-        const key = subParts[0];
-        if (!key) continue;
+        const subParts = Array.from(
+          new Set(
+            (node.utmContent || '')
+              .split('-')
+              .map((p) => sanitizeSubId(p.toLowerCase()))
+              .filter(Boolean)
+              .slice(0, 5)
+          )
+        );
+        if (subParts.length === 0) continue;
 
-        const existing = map.get(key) ?? {
-          sales: 0,
-          totalOrderValue: 0,
-          commission: 0
-        };
-
+        let nodeSales = 0;
+        let nodeValue = 0;
+        let nodeCommission = 0;
         for (const order of node.orders ?? []) {
           const st = (order.orderStatus || '').toUpperCase();
           if (st === 'CANCELLED' || st === 'INVALID') continue;
 
-          existing.sales += 1;
+          nodeSales += 1;
           for (const item of order.items ?? []) {
             const p = Number.parseFloat(item.itemPrice || '0');
             const q = item.qty || 1;
             const c = Number.parseFloat(item.itemTotalCommission || '0');
-            if (Number.isFinite(p)) existing.totalOrderValue += p * q;
-            if (Number.isFinite(c)) existing.commission += c;
+            if (Number.isFinite(p)) nodeValue += p * q;
+            if (Number.isFinite(c)) nodeCommission += c;
           }
           if (!order.items?.length) {
             const totalC = Number.parseFloat(node.totalCommission || '0');
-            if (Number.isFinite(totalC)) existing.commission += totalC;
+            if (Number.isFinite(totalC)) nodeCommission += totalC;
           }
         }
-        map.set(key, existing);
+
+        for (const key of subParts) {
+          const existing = map.get(key) ?? {
+            sales: 0,
+            totalOrderValue: 0,
+            commission: 0
+          };
+          existing.sales += nodeSales;
+          existing.totalOrderValue += nodeValue;
+          existing.commission += nodeCommission;
+          map.set(key, existing);
+        }
       }
 
       if (!report.pageInfo.hasNextPage || !report.pageInfo.scrollId) break;

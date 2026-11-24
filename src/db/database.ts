@@ -26,6 +26,7 @@ export type SettingKey =
   | 'meta_whatsapp_token'
   | 'meta_phone_number_id'
   | 'meta_webhook_verify_token'
+  | 'meta_app_secret'
   | 'x1_enabled'
   | 'x1_channel'
   | 'ai_provider'
@@ -404,6 +405,7 @@ export class HubDatabase {
       meta_whatsapp_token: config.seedSettings.meta_whatsapp_token,
       meta_phone_number_id: config.seedSettings.meta_phone_number_id,
       meta_webhook_verify_token: config.seedSettings.meta_webhook_verify_token,
+      meta_app_secret: '',
       x1_enabled: 'true',
       x1_channel: 'baileys',
       ai_provider: config.seedSettings.ai_provider,
@@ -416,7 +418,7 @@ export class HubDatabase {
       x1_listen_audio: 'true',
       x1_audio_reply_mode: 'mirror',
       x1_audio_max_chars: '280',
-      stt_provider: 'voicebox_local',
+      stt_provider: 'gemini',
       stt_base_url: 'http://127.0.0.1:17493',
       stt_api_key: '',
       stt_model: 'whisper-large-v3-turbo',

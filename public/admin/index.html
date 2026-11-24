@@ -40,9 +40,8 @@
               Mostrar
             </button>
           </div>
-          <p id="default-pass-hint" class="hint hidden">
-            Dica inicial: se não alterou o arquivo <code>.env</code>, a senha padrão é
-            <code>troque-esta-senha</code>.
+          <p class="muted-sm">
+            Defina uma senha forte em <code>ADMIN_PASSWORD</code> no arquivo <code>.env</code> antes de abrir o túnel público.
           </p>
         </div>
 
@@ -423,6 +422,13 @@
               <div class="field">
                 <label for="set-wa-verify">Webhook Verify Token</label>
                 <input id="set-wa-verify" type="text" />
+              </div>
+              <div class="field span-2">
+                <label for="set-meta-app-secret">Meta App Secret (recomendado para validar assinatura X-Hub-Signature-256 no túnel)</label>
+                <div class="input-with-action">
+                  <input id="set-meta-app-secret" type="password" placeholder="App Secret do painel Meta for Developers" />
+                  <button type="button" class="btn btn-ghost btn-sm toggle-secret" data-target="set-meta-app-secret">Mostrar</button>
+                </div>
               </div>
             </div>
             <div id="x1-buttons-editor" class="buttons-grid"></div>

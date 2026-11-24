@@ -1,9 +1,9 @@
 {
   "project": "Shopee_Affiliate_Hub",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "status": "PASS",
   "current_step": 7,
-  "updated_at": "2026-11-24T00:26:50Z",
+  "updated_at": "2026-11-24T00:34:30Z",
   "steps": [
     {
       "id": 1,
@@ -37,14 +37,15 @@
     },
     {
       "id": 7,
-      "name": "Autonomous IVAR Peer Audit & Joint Report",
-      "status": "IN_PROGRESS"
+      "name": "Autonomous IVAR Peer Audit & Security Hardening",
+      "status": "COMPLETED"
     }
   ],
   "verification": {
     "typecheck": "PASS (tsc --noEmit)",
     "build": "PASS (tsc)",
-    "tests": "PASS (4/4 tests across hub.test.ts and v2-upgrade.test.ts)",
-    "playwright_qa": "PASS (1440x900 & 390x844, 0 console errors, overflowX=false)"
+    "tests": "PASS (4/4 tests across hub.test.ts and v2-upgrade.test.ts including IVAR hardening regressions)",
+    "playwright_qa": "PASS (1440x900 & 390x844, 0 console errors, overflowX=false)",
+    "ivar_audit": "COMPLETED (all 5 code/security gaps patched and verified)"
   }
 }

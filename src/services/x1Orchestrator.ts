@@ -88,6 +88,12 @@ export class X1Orchestrator {
       return { queued: false, reason: 'blacklisted' };
     }
 
+    const existingState = this.db.getContactState(input.jid);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (existingState?.paused_until && existingState.paused_until > nowSec) {
+      return { queued: false, reason: 'contact_paused' };
+    }
+
     this.db.touchInboundContact(input.jid);
 
     let text = (input.text || '').trim();
@@ -234,13 +240,20 @@ export class X1Orchestrator {
           const audioMsgId = await adapter.sendAudio(jid, oggBuffer);
           if (audioMsgId) this.db.recordBotSentId(audioMsgId);
           usedAudio = true;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.db.addLog(
+            'warn',
+            'voice',
+            `Fallback automatico para texto ao responder ${jid} (TTS falhou).`,
+            msg
+          );
+        }
 
-          // In hybrid mode, also send the clickable text/link right after the voice note
+        if (usedAudio) {
           if (audioMode === 'hybrid' && !humanCheckpoint) {
             const linkFollowup =
-              jev.topItem?.affiliate_url ||
-              buttons[0]?.linkUrl ||
-              '';
+              jev.topItem?.affiliate_url || buttons[0]?.linkUrl || '';
             const textPayload =
               adapter.channelName === 'baileys'
                 ? `${linkFollowup ? `Link oficial: ${linkFollowup}` : ''}${formatNumberedOptions(buttons)}`.trim()
@@ -255,14 +268,6 @@ export class X1Orchestrator {
             }
           }
           return;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.db.addLog(
-            'warn',
-            'voice',
-            `Fallback automatico para texto ao responder ${jid} (TTS falhou).`,
-            msg
-          );
         }
       }
 

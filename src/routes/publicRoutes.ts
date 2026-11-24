@@ -96,6 +96,16 @@ export function createPublicRoutes(
   });
 
   router.post('/webhook/whatsapp', async (req, res) => {
+    const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody;
+    const signature =
+      typeof req.headers['x-hub-signature-256'] === 'string'
+        ? req.headers['x-hub-signature-256']
+        : undefined;
+    if (!whatsappCloud.verifyWebhookSignature(rawBody, signature)) {
+      res.status(401).json({ ok: false, error: 'Assinatura webhook invalida.' });
+      return;
+    }
+
     try {
       const summary = await whatsappCloud.handleWebhookPayload(req.body ?? {});
       res.status(200).json({ ok: true, summary });

@@ -76,7 +76,14 @@ export function createHubApp(
 
   const app = express();
   app.set('trust proxy', true);
-  app.use(express.json({ limit: '15mb' }));
+  app.use(
+    express.json({
+      limit: '15mb',
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      }
+    })
+  );
   app.use(cookieParser());
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

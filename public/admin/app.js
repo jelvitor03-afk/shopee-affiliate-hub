@@ -68,10 +68,9 @@
     element.textContent = ok ? okLabel : warnLabel;
   }
 
-  function showLogin(usingDefaultPassword) {
+  function showLogin() {
     el('login-view').classList.remove('hidden');
     el('app-view').classList.add('hidden');
-    el('default-pass-hint').classList.toggle('hidden', !usingDefaultPassword);
     stopWaPolling();
   }
 
@@ -410,6 +409,7 @@
     el('set-wa-token').value = st.meta_whatsapp_token || '';
     el('set-wa-phone-id').value = st.meta_phone_number_id || '';
     el('set-wa-verify').value = st.meta_webhook_verify_token || '';
+    el('set-meta-app-secret').value = st.meta_app_secret || '';
     el('ov-verify-token').value = st.meta_webhook_verify_token || '';
     el('set-jev-enabled').value = st.jev_enabled || 'true';
     el('set-jev-threshold').value = st.jev_threshold || '0.65';
@@ -802,6 +802,7 @@
         meta_whatsapp_token: el('set-wa-token').value,
         meta_phone_number_id: el('set-wa-phone-id').value,
         meta_webhook_verify_token: el('set-wa-verify').value,
+        meta_app_secret: el('set-meta-app-secret').value,
         jev_enabled: el('set-jev-enabled').value,
         jev_threshold: el('set-jev-threshold').value,
         x1_buttons_json: collectX1ButtonsJson()
@@ -1062,8 +1063,8 @@
       if (session.authenticated) {
         await bootstrapAuthenticated();
       } else {
-        showLogin(Boolean(session.usingDefaultPassword));
+        showLogin();
       }
     })
-    .catch(() => showLogin(true));
+    .catch(() => showLogin());
 })();

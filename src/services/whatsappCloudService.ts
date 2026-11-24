@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { AppConfig } from '../config/env.js';
 import {
   HubDatabase,
@@ -57,6 +58,31 @@ export class WhatsAppCloudService {
       return challenge;
     }
     return null;
+  }
+
+  verifyWebhookSignature(
+    rawBody: Buffer | undefined,
+    signatureHeader: string | undefined
+  ): boolean {
+    const appSecret = this.db.getSetting('meta_app_secret').trim();
+    if (!appSecret) {
+      return true;
+    }
+    if (!rawBody || !signatureHeader || !signatureHeader.startsWith('sha256=')) {
+      return false;
+    }
+    const providedHex = signatureHeader.slice('sha256='.length).trim().toLowerCase();
+    const expectedHex = crypto
+      .createHmac('sha256', appSecret)
+      .update(rawBody)
+      .digest('hex');
+    if (providedHex.length !== expectedHex.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(
+      Buffer.from(providedHex, 'utf8'),
+      Buffer.from(expectedHex, 'utf8')
+    );
   }
 
   private async postCloudMessage(

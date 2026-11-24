@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -524,6 +525,93 @@ test('V2 E2E: No-Pixel ROI Dash, Hybrid Voice OGG/Opus + Fallback, Human Takeove
       headers: { Cookie: cookie }
     });
     assert.equal(hub.antiBan.getStatus().circuitOpen, false);
+
+    // 8. IVAR Reality Gate Regression Fixes:
+    // 8a. Composite greeting "Oi, tudo bem?" must NOT trigger false Jev pause
+    const greetingTurn = await hub.x1.processResolvedTurn(
+      lead3,
+      'Oi, tudo bem?',
+      false,
+      mockAdapter
+    );
+    assert.equal(greetingTurn.humanCheckpoint, false);
+
+    // 8b. Paused contact short-circuits BEFORE STT transcription
+    hub.db.pauseContact(lead3, 30, 'Humano assumiu');
+    const sttCallsBefore = mock.calls.filter(
+      (c) => c.url === '/voicebox/transcribe'
+    ).length;
+    const pausedAudioResult = await hub.x1.handleInboundQueued(
+      {
+        jid: lead3,
+        messageId: 'in_paused_aud',
+        audioBuffer: sampleWav,
+        audioMime: 'audio/wav',
+        debounceMsOverride: 0
+      },
+      mockAdapter
+    );
+    assert.equal(pausedAudioResult.queued, false);
+    assert.equal(pausedAudioResult.reason, 'contact_paused');
+    assert.equal(
+      mock.calls.filter((c) => c.url === '/voicebox/transcribe').length,
+      sttCallsBefore,
+      'Paused contact must NOT burn STT calls'
+    );
+
+    // 8c. Webhook HMAC X-Hub-Signature-256 verification when meta_app_secret is set
+    await fetch(`${appBaseUrl}/api/admin/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ meta_app_secret: 'my-meta-app-secret' })
+    });
+    const hookRawBody = JSON.stringify({ entry: [] });
+    const badHookRes = await fetch(`${appBaseUrl}/webhook/whatsapp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': 'sha256=' + '0'.repeat(64)
+      },
+      body: hookRawBody
+    });
+    assert.equal(badHookRes.status, 401);
+
+    const validSig =
+      'sha256=' +
+      crypto
+        .createHmac('sha256', 'my-meta-app-secret')
+        .update(hookRawBody, 'utf8')
+        .digest('hex');
+    const okHookRes = await fetch(`${appBaseUrl}/webhook/whatsapp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': validSig
+      },
+      body: hookRawBody
+    });
+    assert.equal(okHookRes.status, 200);
+
+    // 8d. Session endpoint must NOT disclose default password, and brute-force login hits 429
+    const sessJson = (await (
+      await fetch(`${appBaseUrl}/api/admin/session`)
+    ).json()) as Record<string, unknown>;
+    assert.equal('usingDefaultPassword' in sessJson, false);
+
+    for (let i = 0; i < 6; i++) {
+      const failLogin = await fetch(`${appBaseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: 'bad' })
+      });
+      assert.equal(failLogin.status, 401);
+    }
+    const throttledLogin = await fetch(`${appBaseUrl}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'bad' })
+    });
+    assert.equal(throttledLogin.status, 429);
   } finally {
     hub.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
