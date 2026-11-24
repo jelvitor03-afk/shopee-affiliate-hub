@@ -2,21 +2,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
-  WASocket
+  WASocket,
+  WAMessage
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { AppConfig } from '../config/env.js';
 import { HubDatabase } from '../db/database.js';
 import { AiService } from './aiService.js';
+import { AntiBanService } from './antiBanService.js';
 import {
   ProductOfferNode,
   sanitizeSubId,
   ShopeeAffiliateClient,
   ShopeeCredentials
 } from './shopeeAffiliateClient.js';
+import { X1ChannelAdapter, X1Orchestrator } from './x1Orchestrator.js';
 
 export type BaileysStatus = 'disconnected' | 'connecting' | 'qr' | 'connected';
 
@@ -47,6 +51,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function extractTextFromBaileysMessage(msg: WAMessage): string {
+  const m = msg.message;
+  if (!m) return '';
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    ''
+  ).trim();
+}
+
 export class BaileysGroupService {
   private socket: WASocket | null = null;
   private status: BaileysStatus = 'disconnected';
@@ -62,7 +78,9 @@ export class BaileysGroupService {
     private readonly db: HubDatabase,
     private readonly config: AppConfig,
     private readonly shopee: ShopeeAffiliateClient,
-    private readonly ai: AiService
+    private readonly ai: AiService,
+    private readonly antiBan: AntiBanService,
+    private readonly x1: X1Orchestrator
   ) {
     this.authDir = path.join(config.dataDir, 'baileys_auth');
   }
@@ -107,6 +125,114 @@ export class BaileysGroupService {
     return this.getSnapshot();
   }
 
+  private buildBaileysX1Adapter(): X1ChannelAdapter {
+    return {
+      channelName: 'baileys',
+      sendPresence: async (jid, presence, durationMs) => {
+        if (!this.socket) return;
+        await sleep(this.config.antibanReadDelayMs);
+        await this.socket.sendPresenceUpdate('available');
+        await this.socket.sendPresenceUpdate(presence, jid);
+        await sleep(this.config.antibanMinDelayMs > 0 ? durationMs : 0);
+      },
+      sendText: async (jid, text) => {
+        if (!this.socket || this.status !== 'connected') {
+          throw new Error('WhatsApp Baileys nao esta conectado.');
+        }
+        const sent = await this.socket.sendMessage(jid, { text });
+        await this.socket.sendPresenceUpdate('paused', jid);
+        return sent?.key?.id ?? undefined;
+      },
+      sendAudio: async (jid, oggOpusBuffer) => {
+        if (!this.socket || this.status !== 'connected') {
+          throw new Error('WhatsApp Baileys nao esta conectado.');
+        }
+        const sent = await this.socket.sendMessage(jid, {
+          audio: oggOpusBuffer,
+          mimetype: 'audio/ogg; codecs=opus',
+          ptt: true
+        });
+        await this.socket.sendPresenceUpdate('paused', jid);
+        return sent?.key?.id ?? undefined;
+      }
+    };
+  }
+
+  async handleMessagesUpsert(
+    messages: WAMessage[],
+    type: string,
+    adapterOverride?: X1ChannelAdapter,
+    debounceMsOverride?: number
+  ): Promise<void> {
+    if (type !== 'notify') return;
+
+    const settings = this.db.getAllSettings();
+    if (settings.x1_enabled !== 'true' || settings.x1_channel !== 'baileys') {
+      return;
+    }
+
+    const adapter = adapterOverride ?? this.buildBaileysX1Adapter();
+
+    for (const msg of messages) {
+      const jid = msg.key?.remoteJid;
+      const msgId = msg.key?.id;
+      if (!jid || !msgId) continue;
+
+      // Ignore groups, status broadcasts, and newsletters for private X1
+      if (
+        jid.endsWith('@g.us') ||
+        jid === 'status@broadcast' ||
+        jid.endsWith('@newsletter')
+      ) {
+        continue;
+      }
+
+      if (msg.key.fromMe) {
+        this.x1.handleFromMeCheck(jid, msgId);
+        continue;
+      }
+
+      if (this.socket) {
+        try {
+          await this.socket.readMessages([msg.key]);
+        } catch {
+          // Ignore read receipt failures
+        }
+      }
+
+      let audioBuffer: Buffer | undefined;
+      let audioMime: string | undefined;
+      if (msg.message?.audioMessage && this.socket) {
+        try {
+          audioBuffer = await downloadMediaMessage(msg, 'buffer', {});
+          audioMime = msg.message.audioMessage.mimetype || 'audio/ogg';
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.db.addLog(
+            'warn',
+            'baileys',
+            `Nao foi possivel baixar audio de ${jid}`,
+            errMsg
+          );
+        }
+      }
+
+      const text = extractTextFromBaileysMessage(msg);
+      await this.x1.handleInboundQueued(
+        {
+          jid,
+          messageId: msgId,
+          fromMe: false,
+          text,
+          audioBuffer,
+          audioMime,
+          debounceMsOverride
+        },
+        adapter
+      );
+    }
+  }
+
   private async initSocket(): Promise<void> {
     fs.mkdirSync(this.authDir, { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
@@ -123,6 +249,13 @@ export class BaileysGroupService {
 
     this.socket = sock;
     sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('messages.upsert', (event) => {
+      void this.handleMessagesUpsert(event.messages, event.type).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.db.addLog('error', 'baileys', 'Erro ao processar mensagem X1.', msg);
+      });
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -141,7 +274,8 @@ export class BaileysGroupService {
         this.status = 'connected';
         this.qrDataUrl = null;
         this.lastError = null;
-        this.connectedPhone = sock.user?.id?.split(':')[0] ?? sock.user?.id ?? null;
+        this.connectedPhone =
+          sock.user?.id?.split(':')[0] ?? sock.user?.id ?? null;
         this.db.addLog(
           'info',
           'baileys',
@@ -166,7 +300,8 @@ export class BaileysGroupService {
         if (loggedOut) {
           this.status = 'disconnected';
           this.qrDataUrl = null;
-          this.lastError = 'Sessao desconectada no celular. Gere um novo QR Code.';
+          this.lastError =
+            'Sessao desconectada no celular. Gere um novo QR Code.';
           this.db.addLog('warn', 'baileys', this.lastError);
           fs.rmSync(this.authDir, { recursive: true, force: true });
         } else {
@@ -193,7 +328,7 @@ export class BaileysGroupService {
       try {
         await this.socket.logout();
       } catch {
-        // Ignore logout socket race when already closed
+        // Ignore logout socket race
       }
       try {
         this.socket.end(undefined);
@@ -212,7 +347,9 @@ export class BaileysGroupService {
 
   async listGroups(): Promise<GroupInfo[]> {
     if (!this.socket || this.status !== 'connected') {
-      throw new Error('WhatsApp ainda nao esta conectado. Escaneie o QR Code primeiro.');
+      throw new Error(
+        'WhatsApp ainda nao esta conectado. Escaneie o QR Code primeiro.'
+      );
     }
     const groupsMap = await this.socket.groupFetchAllParticipating();
     return Object.values(groupsMap)
@@ -224,7 +361,9 @@ export class BaileysGroupService {
       .sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
   }
 
-  async dispatchNextOffer(options: { ignoreScheduleWindow?: boolean } = {}): Promise<DispatchOfferResult> {
+  async dispatchNextOffer(
+    options: { ignoreScheduleWindow?: boolean } = {}
+  ): Promise<DispatchOfferResult> {
     const settings = this.db.getAllSettings();
     const groupJid = settings.whatsapp_group_jid.trim();
 
@@ -232,15 +371,29 @@ export class BaileysGroupService {
       return { sent: false, reason: 'ID do grupo de WhatsApp nao configurado.' };
     }
     if (!this.socket || this.status !== 'connected') {
-      return { sent: false, reason: 'WhatsApp do grupo ainda nao esta conectado.' };
+      return {
+        sent: false,
+        reason: 'WhatsApp do grupo ainda nao esta conectado.'
+      };
     }
     if (!settings.shopee_app_id || !settings.shopee_secret) {
-      return { sent: false, reason: 'AppId e Secret da Shopee nao configurados.' };
+      return {
+        sent: false,
+        reason: 'AppId e Secret da Shopee nao configurados.'
+      };
+    }
+
+    const canSend = this.antiBan.checkCanSend('group', groupJid);
+    if (!canSend.allowed) {
+      return { sent: false, reason: canSend.reason };
     }
 
     if (!options.ignoreScheduleWindow) {
       const hour = new Date().getHours();
-      const startHour = Number.parseInt(settings.group_active_start_hour || '8', 10);
+      const startHour = Number.parseInt(
+        settings.group_active_start_hour || '8',
+        10
+      );
       const endHour = Number.parseInt(settings.group_active_end_hour || '22', 10);
       if (hour < startHour || hour > endHour) {
         return {
@@ -306,9 +459,10 @@ export class BaileysGroupService {
       );
     }
 
-    const caption = await this.ai.generateAchadinhoCopy(
+    const rawCaption = await this.ai.generateAchadinhoCopy(
       {
         provider: settings.ai_provider,
+        baseUrl: settings.ai_base_url,
         apiKey: settings.ai_api_key,
         model: settings.ai_model,
         geminiBaseUrl: this.config.geminiBaseUrl,
@@ -317,38 +471,44 @@ export class BaileysGroupService {
       candidate,
       shortLink
     );
+    const caption = this.antiBan.applyMicroVariation(rawCaption);
 
-    const minDelay = this.config.baileysDelayMinMs;
-    const maxDelay = Math.max(minDelay, this.config.baileysDelayMaxMs);
-    const delayMs =
-      maxDelay > 0
-        ? minDelay + Math.floor(Math.random() * (maxDelay - minDelay + 1))
-        : 0;
+    await this.antiBan.enqueueSend('group', groupJid, caption, async () => {
+      const sock = this.socket;
+      if (!sock || this.status !== 'connected') {
+        throw new Error('WhatsApp desconectado durante o envio.');
+      }
 
-    try {
-      await this.socket.sendPresenceUpdate('available');
-      await this.socket.sendPresenceUpdate('composing', groupJid);
+      const minDelay = this.config.baileysDelayMinMs;
+      const maxDelay = Math.max(minDelay, this.config.baileysDelayMaxMs);
+      const delayMs =
+        maxDelay > 0
+          ? minDelay + Math.floor(Math.random() * (maxDelay - minDelay + 1))
+          : 0;
+
+      await sock.sendPresenceUpdate('available');
+      await sock.sendPresenceUpdate('composing', groupJid);
       await sleep(delayMs);
 
+      let sentMsg: WAMessage | undefined;
       if (candidate.imageUrl) {
         try {
-          await this.socket.sendMessage(groupJid, {
+          sentMsg = await sock.sendMessage(groupJid, {
             image: { url: candidate.imageUrl },
             caption
           });
         } catch {
-          await this.socket.sendMessage(groupJid, { text: caption });
+          sentMsg = await sock.sendMessage(groupJid, { text: caption });
         }
       } else {
-        await this.socket.sendMessage(groupJid, { text: caption });
+        sentMsg = await sock.sendMessage(groupJid, { text: caption });
+      }
+      if (sentMsg?.key?.id) {
+        this.db.recordBotSentId(sentMsg.key.id);
       }
 
-      await this.socket.sendPresenceUpdate('paused', groupJid);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.db.addLog('error', 'achadinhos', 'Falha ao enviar mensagem no grupo.', msg);
-      throw err;
-    }
+      await sock.sendPresenceUpdate('paused', groupJid);
+    });
 
     this.db.recordDispatchedOffer({
       item_id: String(candidate.itemId),

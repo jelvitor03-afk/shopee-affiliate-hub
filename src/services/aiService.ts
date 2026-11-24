@@ -2,8 +2,11 @@ import { ProductOfferNode } from './shopeeAffiliateClient.js';
 
 export interface AiConfig {
   provider: string;
+  baseUrl?: string;
   apiKey: string;
   model: string;
+  temperature?: number;
+  maxTokens?: number;
   geminiBaseUrl: string;
   openaiBaseUrl: string;
 }
@@ -24,15 +27,34 @@ export class AiService {
     config: AiConfig,
     systemPrompt: string,
     turns: ChatTurn[],
-    maxTokens = 320
+    maxTokensOverride?: number
   ): Promise<string> {
-    if (!config.apiKey.trim()) {
-      throw new Error('AI API key is not configured.');
-    }
+    const provider = (config.provider || 'gemini').toLowerCase();
+    const maxTokens = maxTokensOverride ?? config.maxTokens ?? 320;
+    const temperature =
+      typeof config.temperature === 'number' && Number.isFinite(config.temperature)
+        ? Math.min(1.5, Math.max(0, config.temperature))
+        : 0.6;
 
-    if (config.provider === 'openai') {
-      const base = config.openaiBaseUrl.replace(/\/+$/, '');
+    if (provider === 'openai' || provider === 'openai_compat') {
+      const base = (
+        provider === 'openai_compat' && config.baseUrl?.trim()
+          ? config.baseUrl.trim()
+          : config.openaiBaseUrl
+      ).replace(/\/+$/, '');
       const model = config.model.trim() || 'gpt-4o-mini';
+
+      if (provider === 'openai' && !config.apiKey.trim()) {
+        throw new Error('OpenAI API key is not configured.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (config.apiKey.trim()) {
+        headers.Authorization = `Bearer ${config.apiKey.trim()}`;
+      }
+
       const messages = [
         { role: 'system', content: systemPrompt },
         ...turns.map((t) => ({ role: t.role, content: t.content }))
@@ -40,28 +62,29 @@ export class AiService {
 
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey.trim()}`
-        },
+        headers,
         body: JSON.stringify({
           model,
           messages,
           max_tokens: maxTokens,
-          temperature: 0.6
+          temperature
         }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(25000)
       });
       const text = await res.text();
       if (!res.ok) {
-        throw new Error(`OpenAI HTTP ${res.status}: ${text.slice(0, 220)}`);
+        throw new Error(`OpenAI-compat HTTP ${res.status}: ${text.slice(0, 220)}`);
       }
       const parsed = JSON.parse(text) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
       const out = parsed.choices?.[0]?.message?.content?.trim();
-      if (!out) throw new Error('OpenAI returned empty content.');
+      if (!out) throw new Error('LLM returned empty content.');
       return out;
+    }
+
+    if (!config.apiKey.trim()) {
+      throw new Error('Gemini API key is not configured.');
     }
 
     const base = config.geminiBaseUrl.replace(/\/+$/, '');
@@ -81,10 +104,10 @@ export class AiService {
         contents,
         generationConfig: {
           maxOutputTokens: maxTokens,
-          temperature: 0.6
+          temperature
         }
       }),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(20000)
     });
 
     const raw = await res.text();
@@ -111,8 +134,8 @@ export class AiService {
     const priceLabel = formatBrlPrice(offer.price || offer.priceMin);
     const title = offer.productName.trim().slice(0, 95);
     return [
-      `ACHADINHO SHOPEE`,
-      `${title}`,
+      'ACHADINHO SHOPEE',
+      title,
       `Valor hoje: ${priceLabel}`,
       `Garanta no link oficial: ${shortLink}`
     ].join('\n\n');
@@ -123,7 +146,7 @@ export class AiService {
     offer: ProductOfferNode,
     shortLink: string
   ): Promise<string> {
-    if (!config.apiKey.trim()) {
+    if (config.provider !== 'openai_compat' && !config.apiKey.trim()) {
       return this.buildDeterministicOfferCaption(offer, shortLink);
     }
 
@@ -154,16 +177,21 @@ export class AiService {
     config: AiConfig,
     params: {
       systemPrompt: string;
+      catalogContext?: string;
       history: ChatTurn[];
       userMessage: string;
     }
   ): Promise<string> {
-    const trimmedPrompt =
+    const basePrompt =
       params.systemPrompt.trim() ||
-      'Voce e uma assistente de vendas de achadinhos da Shopee no WhatsApp. Responda em portugues do Brasil de forma objetiva, educada e curta (maximo 3 frases) convidando o cliente a clicar em um dos botoes abaixo.';
+      'Voce e uma assistente de vendas de achadinhos da Shopee no WhatsApp. Responda em portugues do Brasil de forma objetiva, educada e curta (maximo 3 frases).';
 
-    if (!config.apiKey.trim()) {
-      return 'Oi! Posso te mandar o link direto com desconto agora mesmo. Toque em uma das opcoes abaixo para ver na hora:';
+    const fullSystemPrompt = params.catalogContext?.trim()
+      ? `${basePrompt}\n\n[DADOS VERIFICADOS DO CATALOGO - NAO INVENTE PRECOS OU LINKS FORA DISSO]\n${params.catalogContext.trim()}`
+      : basePrompt;
+
+    if (config.provider !== 'openai_compat' && !config.apiKey.trim()) {
+      return 'Oi! Posso te mandar o link direto com desconto agora mesmo. Confira as opcoes abaixo:';
     }
 
     const turns: ChatTurn[] = [
@@ -172,7 +200,7 @@ export class AiService {
     ];
 
     try {
-      const reply = await this.generateText(config, trimmedPrompt, turns, 240);
+      const reply = await this.generateText(config, fullSystemPrompt, turns);
       return reply.slice(0, 800);
     } catch {
       return 'Recebi sua mensagem! Escolha uma das opcoes abaixo para acessar os links direto da Shopee:';

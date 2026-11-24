@@ -7,6 +7,8 @@ export interface EnvSeedSettings {
   meta_pixel_id: string;
   meta_capi_token: string;
   meta_test_event_code: string;
+  meta_ad_account_id: string;
+  meta_marketing_token: string;
   shopee_app_id: string;
   shopee_secret: string;
   shopee_graphql_url: string;
@@ -16,6 +18,7 @@ export interface EnvSeedSettings {
   ai_provider: string;
   ai_api_key: string;
   ai_model: string;
+  ai_base_url: string;
   whatsapp_group_jid: string;
   shopee_keywords: string;
   public_base_url: string;
@@ -30,8 +33,12 @@ export interface AppConfig {
   metaGraphBaseUrl: string;
   geminiBaseUrl: string;
   openaiBaseUrl: string;
+  elevenlabsBaseUrl: string;
   baileysDelayMinMs: number;
   baileysDelayMaxMs: number;
+  antibanReadDelayMs: number;
+  antibanMinDelayMs: number;
+  antibanMaxDelayMs: number;
   seedSettings: EnvSeedSettings;
 }
 
@@ -51,6 +58,8 @@ export function loadEnvConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     meta_pixel_id: process.env.META_PIXEL_ID?.trim() || '',
     meta_capi_token: process.env.META_CAPI_TOKEN?.trim() || '',
     meta_test_event_code: process.env.META_TEST_EVENT_CODE?.trim() || '',
+    meta_ad_account_id: process.env.META_AD_ACCOUNT_ID?.trim() || '',
+    meta_marketing_token: process.env.META_MARKETING_TOKEN?.trim() || '',
     shopee_app_id: process.env.SHOPEE_APP_ID?.trim() || '',
     shopee_secret: process.env.SHOPEE_SECRET?.trim() || '',
     shopee_graphql_url:
@@ -63,6 +72,8 @@ export function loadEnvConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ai_provider: process.env.AI_PROVIDER?.trim() || 'gemini',
     ai_api_key: process.env.AI_API_KEY?.trim() || '',
     ai_model: process.env.AI_MODEL?.trim() || 'gemini-2.5-flash',
+    ai_base_url:
+      process.env.AI_BASE_URL?.trim() || 'http://localhost:11434/v1',
     whatsapp_group_jid: process.env.WHATSAPP_GROUP_JID?.trim() || '',
     shopee_keywords:
       process.env.SHOPEE_KEYWORDS?.trim() ||
@@ -92,12 +103,25 @@ export function loadEnvConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     openaiBaseUrl:
       overrides.openaiBaseUrl ??
       (process.env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1'),
+    elevenlabsBaseUrl:
+      overrides.elevenlabsBaseUrl ??
+      (process.env.ELEVENLABS_BASE_URL?.trim() ||
+        'https://api.elevenlabs.io/v1'),
     baileysDelayMinMs:
       overrides.baileysDelayMinMs ??
       parseIntOrDefault(process.env.BAILEYS_DELAY_MIN_MS, 2500),
     baileysDelayMaxMs:
       overrides.baileysDelayMaxMs ??
       parseIntOrDefault(process.env.BAILEYS_DELAY_MAX_MS, 6000),
+    antibanReadDelayMs:
+      overrides.antibanReadDelayMs ??
+      parseIntOrDefault(process.env.ANTIBAN_READ_DELAY_MS, 1500),
+    antibanMinDelayMs:
+      overrides.antibanMinDelayMs ??
+      parseIntOrDefault(process.env.ANTIBAN_MIN_DELAY_MS, 2000),
+    antibanMaxDelayMs:
+      overrides.antibanMaxDelayMs ??
+      parseIntOrDefault(process.env.ANTIBAN_MAX_DELAY_MS, 5500),
     seedSettings
   };
 }

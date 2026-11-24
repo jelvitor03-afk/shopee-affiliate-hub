@@ -1,44 +1,50 @@
 {
   "project": "Shopee_Affiliate_Hub",
+  "version": "2.0.0",
   "status": "PASS",
-  "current_step": 6,
-  "updated_at": "2026-11-23T23:25:50Z",
+  "current_step": 7,
+  "updated_at": "2026-11-24T00:26:50Z",
   "steps": [
     {
       "id": 1,
-      "name": "Initialize Checkpoint & Scaffolding",
+      "name": "Finish IVAR Agent Skill Wiring & Stop Port 3000 Daemon",
       "status": "COMPLETED"
     },
     {
       "id": 2,
-      "name": "Implement Core Backend & Services",
+      "name": "Upgrade SQLite Schema & Settings",
       "status": "COMPLETED"
     },
     {
       "id": 3,
-      "name": "Implement Anti-Slop Admin Panel & Windows Launchers",
+      "name": "Implement Meta Ads, Campaign ROI, Voice STT/TTS, Anti-Ban, and RAG+Jev Services",
       "status": "COMPLETED"
     },
     {
       "id": 4,
-      "name": "Write & Run Automated E2E Integration Suite",
+      "name": "Integrate Hybrid X1 Orchestration & Admin Routes",
       "status": "COMPLETED"
     },
     {
       "id": 5,
-      "name": "Playwright Visual QA (1440px & 390px)",
+      "name": "Upgrade Admin UI & Windows Local Voice Guide",
       "status": "COMPLETED"
     },
     {
       "id": 6,
-      "name": "Git Init, BRAIN_MAP Update & Final Receipt",
+      "name": "Build, Automated V2 Tests, Playwright Visual QA & Restart Port 3000",
       "status": "COMPLETED"
+    },
+    {
+      "id": 7,
+      "name": "Autonomous IVAR Peer Audit & Joint Report",
+      "status": "IN_PROGRESS"
     }
   ],
   "verification": {
     "typecheck": "PASS (tsc --noEmit)",
     "build": "PASS (tsc)",
-    "tests": "PASS (2/2 tests in tests/hub.test.ts)",
+    "tests": "PASS (4/4 tests across hub.test.ts and v2-upgrade.test.ts)",
     "playwright_qa": "PASS (1440x900 & 390x844, 0 console errors, overflowX=false)"
   }
 }

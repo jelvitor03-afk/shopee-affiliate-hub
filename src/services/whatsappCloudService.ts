@@ -4,13 +4,16 @@ import {
   normalizeX1Buttons,
   X1ButtonConfig
 } from '../db/database.js';
-import { AiService } from './aiService.js';
+import { AntiBanService } from './antiBanService.js';
+import { VoiceService } from './voiceService.js';
+import { X1ChannelAdapter, X1Orchestrator } from './x1Orchestrator.js';
 
 interface WhatsAppWebhookMessage {
   id?: string;
   from?: string;
   type?: string;
   text?: { body?: string };
+  audio?: { id?: string; mime_type?: string };
   interactive?: {
     type?: string;
     button_reply?: { id?: string; title?: string };
@@ -39,7 +42,9 @@ export class WhatsAppCloudService {
   constructor(
     private readonly db: HubDatabase,
     private readonly config: AppConfig,
-    private readonly ai: AiService
+    private readonly voice: VoiceService,
+    private readonly antiBan: AntiBanService,
+    private readonly x1: X1Orchestrator
   ) {}
 
   verifyWebhook(
@@ -58,7 +63,7 @@ export class WhatsAppCloudService {
     phoneNumberId: string,
     accessToken: string,
     payload: Record<string, unknown>
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const base = this.config.metaGraphBaseUrl.replace(/\/+$/, '');
     const url = `${base}/${encodeURIComponent(phoneNumberId)}/messages`;
     const res = await fetch(url, {
@@ -75,6 +80,74 @@ export class WhatsAppCloudService {
     if (!res.ok) {
       throw new Error(`WhatsApp Cloud API HTTP ${res.status}: ${raw.slice(0, 260)}`);
     }
+    try {
+      const parsed = JSON.parse(raw) as { messages?: Array<{ id?: string }> };
+      return parsed.messages?.[0]?.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async downloadMediaBuffer(
+    mediaId: string,
+    accessToken: string
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    const base = this.config.metaGraphBaseUrl.replace(/\/+$/, '');
+    const metaRes = await fetch(`${base}/${encodeURIComponent(mediaId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!metaRes.ok) {
+      throw new Error(`Meta media lookup HTTP ${metaRes.status}`);
+    }
+    const metaJson = (await metaRes.json()) as {
+      url?: string;
+      mime_type?: string;
+    };
+    if (!metaJson.url) {
+      throw new Error('Meta media URL ausente.');
+    }
+    const binRes = await fetch(metaJson.url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!binRes.ok) {
+      throw new Error(`Meta media download HTTP ${binRes.status}`);
+    }
+    return {
+      buffer: Buffer.from(await binRes.arrayBuffer()),
+      mimeType: metaJson.mime_type || 'audio/ogg'
+    };
+  }
+
+  private async uploadOggMedia(
+    phoneNumberId: string,
+    accessToken: string,
+    oggBuffer: Buffer
+  ): Promise<string> {
+    const base = this.config.metaGraphBaseUrl.replace(/\/+$/, '');
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', 'audio/ogg');
+    form.append(
+      'file',
+      new Blob([new Uint8Array(oggBuffer)], { type: 'audio/ogg' }),
+      'voice_reply.ogg'
+    );
+
+    const res = await fetch(`${base}/${encodeURIComponent(phoneNumberId)}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+      signal: AbortSignal.timeout(20000)
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`Meta media upload HTTP ${res.status}: ${raw.slice(0, 200)}`);
+    }
+    const parsed = JSON.parse(raw) as { id?: string };
+    if (!parsed.id) throw new Error('Meta media upload nao retornou id.');
+    return parsed.id;
   }
 
   private buildInteractiveButtonsPayload(
@@ -112,7 +185,10 @@ export class WhatsAppCloudService {
     btn: X1ButtonConfig
   ): Record<string, unknown> {
     const hasHttpsUrl = /^https?:\/\//i.test(btn.linkUrl.trim());
-    const textBody = [btn.replyText, btn.linkUrl].filter(Boolean).join('\n\n').trim();
+    const textBody = [btn.replyText, btn.linkUrl]
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
 
     if (hasHttpsUrl) {
       return {
@@ -123,10 +199,10 @@ export class WhatsAppCloudService {
         interactive: {
           type: 'cta_url',
           body: {
-            text: (btn.replyText || 'Clique no botao abaixo para abrir a oferta oficial:').slice(
-              0,
-              1024
-            )
+            text: (
+              btn.replyText ||
+              'Clique no botao abaixo para abrir a oferta oficial:'
+            ).slice(0, 1024)
           },
           action: {
             name: 'cta_url',
@@ -185,6 +261,10 @@ export class WhatsAppCloudService {
 
       summary.processed++;
 
+      if (settings.x1_enabled !== 'true') {
+        continue;
+      }
+
       if (!settings.meta_whatsapp_token || !settings.meta_phone_number_id) {
         this.db.addLog(
           'warn',
@@ -193,6 +273,15 @@ export class WhatsAppCloudService {
         );
         continue;
       }
+
+      if (this.db.isBlacklisted(from)) {
+        continue;
+      }
+
+      this.db.touchInboundContact(from);
+
+      const phoneNumberId = settings.meta_phone_number_id;
+      const waToken = settings.meta_whatsapp_token;
 
       try {
         if (msg.type === 'interactive') {
@@ -210,11 +299,7 @@ export class WhatsAppCloudService {
               `[Clique botao: ${matchedButton.title}]`
             );
             const payload = this.buildButtonClickPayload(from, matchedButton);
-            await this.postCloudMessage(
-              settings.meta_phone_number_id,
-              settings.meta_whatsapp_token,
-              payload
-            );
+            await this.postCloudMessage(phoneNumberId, waToken, payload);
             this.db.appendX1Message(
               from,
               'assistant',
@@ -225,45 +310,68 @@ export class WhatsAppCloudService {
           continue;
         }
 
-        const userText = msg.text?.body?.trim() || '';
+        let userText = msg.text?.body?.trim() || '';
+        let hadAudio = false;
+
+        if (msg.type === 'audio' && msg.audio?.id) {
+          if (settings.x1_listen_audio !== 'true') continue;
+          hadAudio = true;
+          const media = await this.downloadMediaBuffer(msg.audio.id, waToken);
+          userText = await this.voice.transcribeAudio(
+            media.buffer,
+            msg.audio.mime_type || media.mimeType,
+            settings
+          );
+        }
+
         if (!userText) continue;
 
-        const history = this.db.getRecentX1History(from, 8);
-        this.db.appendX1Message(from, 'user', userText);
+        if (this.antiBan.isOptOutMessage(userText)) {
+          this.db.addToBlacklist(from, `Opt-out: "${userText.slice(0, 40)}"`);
+          await this.postCloudMessage(phoneNumberId, waToken, {
+            messaging_product: 'whatsapp',
+            to: from,
+            type: 'text',
+            text: {
+              body: 'Tudo bem! Nao vamos mais te enviar mensagens por aqui.'
+            }
+          });
+          summary.repliesSent++;
+          continue;
+        }
 
-        const aiReply = await this.ai.generateX1Reply(
-          {
-            provider: settings.ai_provider,
-            apiKey: settings.ai_api_key,
-            model: settings.ai_model,
-            geminiBaseUrl: this.config.geminiBaseUrl,
-            openaiBaseUrl: this.config.openaiBaseUrl
+        const cloudAdapter: X1ChannelAdapter = {
+          channelName: 'cloud_api',
+          sendText: async (to, text, btns) => {
+            const payload =
+              btns && btns.length > 0
+                ? this.buildInteractiveButtonsPayload(to, text, btns)
+                : {
+                    messaging_product: 'whatsapp',
+                    to,
+                    type: 'text',
+                    text: { preview_url: true, body: text.slice(0, 4096) }
+                  };
+            return this.postCloudMessage(phoneNumberId, waToken, payload);
           },
-          {
-            systemPrompt: settings.x1_system_prompt,
-            history,
-            userMessage: userText
+          sendAudio: async (to, oggBuffer) => {
+            const mediaId = await this.uploadOggMedia(
+              phoneNumberId,
+              waToken,
+              oggBuffer
+            );
+            return this.postCloudMessage(phoneNumberId, waToken, {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to,
+              type: 'audio',
+              audio: { id: mediaId }
+            });
           }
-        );
+        };
 
-        const payload = this.buildInteractiveButtonsPayload(
-          from,
-          aiReply,
-          buttons
-        );
-        await this.postCloudMessage(
-          settings.meta_phone_number_id,
-          settings.meta_whatsapp_token,
-          payload
-        );
-
-        this.db.appendX1Message(from, 'assistant', aiReply);
+        await this.x1.processResolvedTurn(from, userText, hadAudio, cloudAdapter);
         summary.repliesSent++;
-        this.db.addLog(
-          'info',
-          'x1',
-          `Resposta interativa enviada para ${from}.`
-        );
       } catch (err) {
         summary.errors++;
         const errMsg = err instanceof Error ? err.message : String(err);
