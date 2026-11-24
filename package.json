@@ -1,7 +1,7 @@
 {
   "name": "shopee-affiliate-hub",
-  "version": "1.0.0",
-  "description": "Windows-native Node.js + TypeScript automation hub for Shopee Affiliate GraphQL, Meta CAPI tracking, Baileys group offers, and WhatsApp Cloud API X1 AI bot.",
+  "version": "2.1.0",
+  "description": "Windows-native Node.js + TypeScript Shopee Affiliate Hub: no-pixel Meta ROI dashboard via sub_id, Hybrid X1 with OGG/Opus voice (Edge-TTS/Voicebox), Anti-Ban + Human Takeover, RAG+Jev guard, Baileys group bot, and interactive in-app setup guide.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

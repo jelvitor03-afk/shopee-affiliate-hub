@@ -6,6 +6,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { createHubApp } from '../src/app.js';
 import { loadEnvConfig } from '../src/config/env.js';
 import { calculateCampaignMetrics } from '../src/services/campaignDashboardService.js';
@@ -443,7 +444,9 @@ test('V2 E2E: No-Pixel ROI Dash, Hybrid Voice OGG/Opus + Fallback, Human Takeove
       mockAdapter
     );
 
-    await new Promise((r) => setTimeout(r, 250));
+    for (let i = 0; i < 60 && (sentTexts.length < 1 || sentAudios.length < 1); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
     const ollamaCalls = mock.calls.filter((c) => c.url === '/ollama/v1/chat/completions');
     assert.equal(ollamaCalls.length, 1, '3 rapid messages must merge into 1 AI turn');
     assert.equal(sentAudios.length, 1, 'Hybrid mode sends OGG/Opus voice note');
@@ -612,6 +615,25 @@ test('V2 E2E: No-Pixel ROI Dash, Hybrid Voice OGG/Opus + Fallback, Human Takeove
       body: JSON.stringify({ password: 'bad' })
     });
     assert.equal(throttledLogin.status, 429);
+
+    // 9. V2.1 In-App Step-by-Step Guide, ROI Helpers & 1-Click Windows Installers
+    const indexRes = await fetch(`${appBaseUrl}/admin/index.html`);
+    assert.equal(indexRes.status, 200);
+    const indexHtml = await indexRes.text();
+    assert.ok(indexHtml.includes('id="tab-guide"'));
+    assert.ok(indexHtml.includes('data-tab="guide"'));
+    assert.ok(indexHtml.includes('id="guide-progress-pill"'));
+    assert.ok(indexHtml.includes('id="roi-col-picker"'));
+
+    const appJsRes = await fetch(`${appBaseUrl}/admin/app.js`);
+    assert.equal(appJsRes.status, 200);
+    const appJsText = await appJsRes.text();
+    assert.ok(appJsText.includes('btn-prefill-subid'));
+    assert.ok(appJsText.includes('updateGuideChecklist'));
+
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    assert.equal(fs.existsSync(path.join(repoRoot, 'INSTALAR_FACIL_WINDOWS.bat')), true);
+    assert.equal(fs.existsSync(path.join(repoRoot, 'INICIAR_SISTEMA.bat')), true);
   } finally {
     hub.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

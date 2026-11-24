@@ -1,10 +1,42 @@
 (() => {
   'use strict';
 
+  const ROI_OPTIONAL_COLS = [
+    'budget',
+    'spend',
+    'sales',
+    'totalOrderValue',
+    'commission',
+    'profit',
+    'roas',
+    'ctr'
+  ];
+
+  function loadHiddenCols() {
+    try {
+      const raw = window.localStorage.getItem('hub_roi_hidden_cols');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((c) => ROI_OPTIONAL_COLS.includes(c)) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveHiddenCols(cols) {
+    try {
+      window.localStorage.setItem('hub_roi_hidden_cols', JSON.stringify(cols));
+    } catch {
+      // Ignore storage failures in restricted browser modes
+    }
+  }
+
   const state = {
     settings: {},
     buttons: [],
     roiData: null,
+    overview: null,
+    catalogCount: 0,
+    hiddenCols: loadHiddenCols(),
     sortCol: 'roas',
     sortAsc: false,
     publicBaseUrl: window.location.origin,
@@ -87,11 +119,27 @@
       panel.classList.toggle('active', panel.id === `tab-${tabName}`);
     });
     if (tabName === 'roi') void loadRoiDashboard();
+    if (tabName === 'guide') updateGuideChecklist();
     if (tabName === 'x1') void Promise.all([loadCatalog(), loadPausedContacts()]);
     if (tabName === 'antiban') void loadAntiBan();
     if (tabName === 'group') void loadWhatsAppStatus();
     if (tabName === 'tracker') void Promise.all([loadCampaigns(), loadLogs()]);
     if (tabName === 'overview') void loadOverview();
+  }
+
+  function applyColumnVisibility() {
+    const hiddenSet = new Set(state.hiddenCols);
+    document.querySelectorAll('#tab-roi [data-col]').forEach((node) => {
+      const col = node.getAttribute('data-col');
+      if (col) node.classList.toggle('hidden', hiddenSet.has(col));
+    });
+    document.querySelectorAll('.roi-col-toggle').forEach((input) => {
+      const col = input.getAttribute('data-col');
+      if (col) input.checked = !hiddenSet.has(col);
+    });
+    const visibleCount = ROI_OPTIONAL_COLS.length - hiddenSet.size;
+    const summary = el('roi-col-summary');
+    if (summary) summary.textContent = `Colunas (${visibleCount})`;
   }
 
   // --- ROI Campaigns (Afiliado Dash) ---
@@ -115,6 +163,7 @@
     if (!campaigns.length) {
       tbody.innerHTML =
         '<tr><td colspan="10" class="muted-sm">Nenhuma campanha encontrada no período.</td></tr>';
+      applyColumnVisibility();
       return;
     }
 
@@ -133,23 +182,38 @@
             title="${isOn ? 'Ativa — clique para pausar' : 'Pausada — clique para ativar'}"
           ></button>
         </td>
-        <td><strong>${escapeHtml(c.name)}</strong><div class="muted-sm"><code>${escapeHtml(c.id)}</code></div></td>
         <td>
+          <div class="camp-cell">
+            <div>
+              <strong>${escapeHtml(c.name)}</strong>
+              <div class="muted-sm"><code>${escapeHtml(c.id)}</code></div>
+            </div>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm btn-prefill-subid"
+              data-camp-id="${escapeHtml(c.id)}"
+              data-camp-name="${escapeHtml(c.name)}"
+              title="Preencher no gerador de link Shopee (sub_id)"
+            >Vincular</button>
+          </div>
+        </td>
+        <td data-col="budget">
           <div class="budget-inline">
             <span>${formatMoney(c.dailyBudget)}</span>
             <button type="button" class="btn btn-ghost btn-sm btn-edit-budget" data-camp-id="${escapeHtml(c.id)}" data-current="${c.dailyBudget}">Editar</button>
           </div>
         </td>
-        <td>${formatMoney(c.spend)}</td>
-        <td>${c.sales}</td>
-        <td>${formatMoney(c.totalOrderValue)}</td>
-        <td>${formatMoney(c.commission)}</td>
-        <td class="${profitCls}"><strong>${formatMoney(c.profit)}</strong></td>
-        <td><strong>${c.roas.toFixed(2).replace('.', ',')}</strong></td>
-        <td>${c.ctr.toFixed(2).replace('.', ',')}%</td>
+        <td data-col="spend">${formatMoney(c.spend)}</td>
+        <td data-col="sales">${c.sales}</td>
+        <td data-col="totalOrderValue">${formatMoney(c.totalOrderValue)}</td>
+        <td data-col="commission">${formatMoney(c.commission)}</td>
+        <td data-col="profit" class="${profitCls}"><strong>${formatMoney(c.profit)}</strong></td>
+        <td data-col="roas"><strong>${c.roas.toFixed(2).replace('.', ',')}</strong></td>
+        <td data-col="ctr">${c.ctr.toFixed(2).replace('.', ',')}%</td>
       `;
       tbody.appendChild(tr);
     }
+    applyColumnVisibility();
   }
 
   async function loadRoiDashboard() {
@@ -254,8 +318,47 @@
     }
   }
 
+  function updateGuideChecklist() {
+    const pill = el('guide-progress-pill');
+    const fill = el('guide-progress-fill');
+    if (!pill || !fill) return;
+
+    const readiness = state.overview?.readiness || {};
+    const waStatus = state.overview?.whatsappState?.status;
+    const st = state.settings || {};
+
+    const shopeeOk = Boolean(readiness.shopeeConfigured);
+    const roiOk = Boolean(readiness.metaAdsConfigured);
+    const waOk =
+      waStatus === 'connected' ||
+      (st.x1_channel === 'cloud' && Boolean(st.meta_whatsapp_token && st.meta_phone_number_id));
+    const x1Ok = Boolean(readiness.x1Configured) && state.catalogCount > 0;
+    const groupOrAntibanOk =
+      Boolean(readiness.groupConfigured) || Boolean(st.antiban_hourly_limit);
+
+    const steps = [shopeeOk, roiOk, waOk, x1Ok, groupOrAntibanOk];
+    const done = steps.filter(Boolean).length;
+    const pct = Math.round((done / steps.length) * 100);
+
+    pill.className = `pill ${done === steps.length ? 'pill-ok' : done >= 2 ? 'pill-warn' : 'pill-muted'}`;
+    pill.textContent = `${done} de ${steps.length} etapas prontas`;
+    fill.style.width = `${pct}%`;
+
+    setPill(el('guide-st-shopee'), shopeeOk, 'Conectada', 'Pendente');
+    setPill(el('guide-st-roi'), roiOk, 'Ao Vivo', 'Modo Demo');
+    setPill(el('guide-st-wa'), waOk, 'Conectado', 'Pendente');
+    setPill(
+      el('guide-st-x1'),
+      x1Ok,
+      `Pronto (${state.catalogCount} itens)`,
+      state.catalogCount === 0 ? 'Cadastre 1 item' : 'Pendente'
+    );
+    setPill(el('guide-st-antiban'), groupOrAntibanOk, 'Ativo', 'Ajustar');
+  }
+
   async function loadOverview() {
     const data = await api('/overview');
+    state.overview = data;
     const s = data.stats;
     state.publicBaseUrl = data.publicBaseUrl || window.location.origin;
 
@@ -289,6 +392,7 @@
     el('ov-public-url').value = base;
     el('ov-webhook-url').value = `${base}${data.webhookPath}`;
     renderWhatsAppState(data.whatsappState);
+    updateGuideChecklist();
   }
 
   function renderX1Buttons(buttons) {
@@ -394,7 +498,7 @@
     el('set-x1-prompt').value = st.x1_system_prompt || '';
     el('set-x1-listen-audio').value = st.x1_listen_audio || 'true';
     el('set-x1-audio-mode').value = st.x1_audio_reply_mode || 'mirror';
-    el('set-stt-provider').value = st.stt_provider || 'voicebox_local';
+    el('set-stt-provider').value = st.stt_provider || 'gemini';
     el('set-stt-url').value = st.stt_base_url || 'http://127.0.0.1:17493';
     el('set-stt-key').value = st.stt_api_key || '';
     el('set-tts-provider').value = st.tts_provider || 'edge_local';
@@ -436,6 +540,8 @@
 
   async function loadCatalog() {
     const data = await api('/catalog');
+    state.catalogCount = data.items.length;
+    updateGuideChecklist();
     const tbody = el('catalog-tbody');
     tbody.innerHTML = '';
     if (!data.items.length) {
@@ -578,13 +684,19 @@
 
   async function bootstrapAuthenticated() {
     showApp();
-    await Promise.all([loadSettings(), loadOverview(), loadRoiDashboard()]);
+    applyColumnVisibility();
+    await Promise.all([loadSettings(), loadOverview(), loadRoiDashboard(), loadCatalog()]);
   }
 
   // Event Delegation
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
+    const picker = el('roi-col-picker');
+    if (picker && picker.open && !picker.contains(target)) {
+      picker.removeAttribute('open');
+    }
 
     if (target.classList.contains('toggle-secret')) {
       const input = el(target.dataset.target);
@@ -605,6 +717,36 @@
 
     if (target.classList.contains('tab-btn') || target.classList.contains('jump-tab')) {
       if (target.dataset.tab) switchTab(target.dataset.tab);
+    }
+
+    if (target.classList.contains('guide-jump')) {
+      const tab = target.dataset.tab;
+      const focusId = target.dataset.focus;
+      if (tab) {
+        switchTab(tab);
+        if (focusId) {
+          setTimeout(() => {
+            const focusEl = el(focusId);
+            if (focusEl) {
+              focusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              focusEl.focus();
+            }
+          }, 80);
+        }
+      }
+    }
+
+    if (target.classList.contains('btn-prefill-subid')) {
+      const campId = target.dataset.campId || '';
+      const campName = target.dataset.campName || '';
+      el('subid-campaign-id').value = campId;
+      el('subid-campaign-name').value = campName;
+      const urlInput = el('subid-product-url');
+      if (urlInput) {
+        urlInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        urlInput.focus();
+      }
+      showToast('Campanha preenchida! Cole o link Shopee do produto abaixo.');
     }
 
     if (target.classList.contains('sortable') && target.dataset.sort) {
@@ -700,6 +842,24 @@
           loadCampaigns()
         );
       }
+    }
+  });
+
+  document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.classList.contains('roi-col-toggle')) {
+      const col = target.dataset.col;
+      if (!col) return;
+      const hiddenSet = new Set(state.hiddenCols);
+      if (target.checked) {
+        hiddenSet.delete(col);
+      } else {
+        hiddenSet.add(col);
+      }
+      state.hiddenCols = Array.from(hiddenSet);
+      saveHiddenCols(state.hiddenCols);
+      applyColumnVisibility();
     }
   });
 

@@ -68,12 +68,14 @@
         <div class="topbar-actions">
           <span id="header-breaker-pill" class="pill pill-ok">Anti-Ban: Ativo</span>
           <span id="header-wa-pill" class="pill pill-muted">WhatsApp: Desconectado</span>
+          <button type="button" class="btn btn-secondary btn-sm jump-tab" data-tab="guide">Passo a Passo</button>
           <button id="btn-logout" type="button" class="btn btn-ghost btn-sm">Sair</button>
         </div>
       </div>
 
       <nav class="tabs-bar" aria-label="Navegação do painel">
         <button type="button" class="tab-btn active" data-tab="roi">Campanhas (ROI)</button>
+        <button type="button" class="tab-btn" data-tab="guide">Passo a Passo (Como Usar)</button>
         <button type="button" class="tab-btn" data-tab="x1">X1 Híbrido, Voz &amp; Jev</button>
         <button type="button" class="tab-btn" data-tab="antiban">Blindagem Anti-Ban</button>
         <button type="button" class="tab-btn" data-tab="group">Grupo de Achadinhos</button>
@@ -103,6 +105,19 @@
                 <option value="last_7d">Últimos 7 dias</option>
                 <option value="maximum">Todo período</option>
               </select>
+              <details class="col-picker" id="roi-col-picker">
+                <summary class="btn btn-ghost" id="roi-col-summary">Colunas (8)</summary>
+                <div class="col-picker-menu">
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="budget" checked /><span>Orçamento</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="spend" checked /><span>Gastos</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="sales" checked /><span>Vendas</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="totalOrderValue" checked /><span>Valor Total</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="commission" checked /><span>Comissão</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="profit" checked /><span>Lucro</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="roas" checked /><span>ROAS</span></label>
+                  <label class="checkbox-row"><input type="checkbox" class="roi-col-toggle" data-col="ctr" checked /><span>CTR</span></label>
+                </div>
+              </details>
               <button id="btn-toggle-demo" type="button" class="btn btn-ghost">
                 Alternar Demo/Real
               </button>
@@ -153,14 +168,14 @@
                 <tr>
                   <th>Status</th>
                   <th class="sortable" data-sort="name">Campanha</th>
-                  <th class="sortable" data-sort="dailyBudget">Orçamento</th>
-                  <th class="sortable" data-sort="spend">Gastos</th>
-                  <th class="sortable" data-sort="sales">Vendas</th>
-                  <th class="sortable" data-sort="totalOrderValue">Valor Total</th>
-                  <th class="sortable" data-sort="commission">Comissão</th>
-                  <th class="sortable" data-sort="profit">Lucro</th>
-                  <th class="sortable" data-sort="roas">ROAS</th>
-                  <th class="sortable" data-sort="ctr">CTR</th>
+                  <th class="sortable" data-sort="dailyBudget" data-col="budget">Orçamento</th>
+                  <th class="sortable" data-sort="spend" data-col="spend">Gastos</th>
+                  <th class="sortable" data-sort="sales" data-col="sales">Vendas</th>
+                  <th class="sortable" data-sort="totalOrderValue" data-col="totalOrderValue">Valor Total</th>
+                  <th class="sortable" data-sort="commission" data-col="commission">Comissão</th>
+                  <th class="sortable" data-sort="profit" data-col="profit">Lucro</th>
+                  <th class="sortable" data-sort="roas" data-col="roas">ROAS</th>
+                  <th class="sortable" data-sort="ctr" data-col="ctr">CTR</th>
                 </tr>
               </thead>
               <tbody id="roi-campaigns-tbody"></tbody>
@@ -915,6 +930,169 @@
               </thead>
               <tbody id="logs-tbody"></tbody>
             </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- TAB 7: PASSO A PASSO (COMO CONFIGURAR E USAR) -->
+      <section id="tab-guide" class="tab-panel">
+        <article class="card stack-md">
+          <div class="card-head">
+            <div>
+              <div class="title-row">
+                <h2>Progresso da Configuração no Seu PC</h2>
+                <span id="guide-progress-pill" class="pill pill-warn">0 de 5 etapas prontas</span>
+              </div>
+              <p class="muted-sm">
+                Siga os 6 passos abaixo na ordem para sair do zero e deixar seu funil Shopee + WhatsApp + Campanhas rodando no Windows.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm jump-tab" data-tab="roi">Ir para Campanhas</button>
+          </div>
+
+          <div class="progress-track" aria-hidden="true">
+            <div id="guide-progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+
+          <div class="guide-check-grid">
+            <div class="guide-check-item">
+              <span>1. Shopee Open API</span>
+              <span id="guide-st-shopee" class="pill pill-warn">Pendente</span>
+            </div>
+            <div class="guide-check-item">
+              <span>2. Meta Ads (ROI)</span>
+              <span id="guide-st-roi" class="pill pill-warn">Modo Demo</span>
+            </div>
+            <div class="guide-check-item">
+              <span>3. WhatsApp (QR / Cloud)</span>
+              <span id="guide-st-wa" class="pill pill-warn">Pendente</span>
+            </div>
+            <div class="guide-check-item">
+              <span>4. X1 + Catálogo Jev</span>
+              <span id="guide-st-x1" class="pill pill-warn">Pendente</span>
+            </div>
+            <div class="guide-check-item">
+              <span>5. Grupo &amp; Anti-Ban</span>
+              <span id="guide-st-antiban" class="pill pill-warn">Ajustar</span>
+            </div>
+          </div>
+        </article>
+
+        <div class="guide-grid">
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 1</span>
+              <h3>Ligar o Sistema e Proteger sua Senha (2 Cliques)</h3>
+            </div>
+            <ul class="guide-list">
+              <li>Na primeira vez em um PC novo, clique 2 vezes em <code>INSTALAR_FACIL_WINDOWS.bat</code> (instala Node.js, FFmpeg, voz gratuita <code>Edge-TTS</code> e prepara tudo sozinho).</li>
+              <li>No dia a dia, clique 2 vezes em <code>INICIAR_SISTEMA.bat</code> e deixe a janela preta <strong>minimizada</strong> (desative a suspensão de tela/hibernação do Windows enquanto o robô estiver rodando).</li>
+              <li>Para trocar a senha do painel, abra o arquivo <code>.env</code> no Bloco de Notas e mude <code>ADMIN_PASSWORD=sua-senha-nova</code>.</li>
+              <li><strong>Importante:</strong> Para usar <em>Campanhas ROI</em>, <em>Grupo de Achadinhos</em> e <em>X1 via QR Code (Baileys)</em> <strong>você NÃO precisa de túnel público</strong>. Só abra o <code>ABRIR_TUNEL_PUBLICO.bat</code> se for usar a <em>WhatsApp Cloud API Oficial da Meta</em> ou links <code>/go/</code>.</li>
+            </ul>
+          </article>
+
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 2</span>
+              <h3>Conectar sua Conta Shopee Afiliados (Obrigatório)</h3>
+            </div>
+            <ul class="guide-list">
+              <li>Entre em <strong>affiliate.shopee.com.br</strong> → menu <strong>Open API</strong> → copie seu <strong>AppId</strong> e <strong>Secret</strong>.</li>
+              <li>Clique no botão abaixo, cole o <code>Shopee AppId</code> e <code>Shopee App Secret</code> e clique em <strong>Salvar Credenciais de Campanhas</strong>.</li>
+              <li>Sem essas 2 chaves, o robô não consegue puxar pedidos em tempo real nem gerar links curtos com <code>sub_id</code>.</li>
+            </ul>
+            <div class="guide-actions">
+              <button type="button" class="btn btn-primary btn-sm guide-jump" data-tab="roi" data-focus="roi-shopee-app-id">Ir para Chaves da Shopee</button>
+            </div>
+          </article>
+
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 3</span>
+              <h3>Painel de Campanhas ROI Sem Pixel (Afiliado Dash)</h3>
+            </div>
+            <ul class="guide-list">
+              <li>No <strong>Meta Business / Gerenciador de Negócios</strong>, crie um Usuário do Sistema (ou gere um Token com permissões <code>ads_read</code> e <code>ads_management</code>) e copie o <strong>ID da Conta de Anúncios</strong> (<code>act_123456...</code>).</li>
+              <li>Cole ambos em <strong>Conexão Meta Marketing API &amp; Shopee</strong> na aba <em>Campanhas (ROI)</em> e salve.</li>
+              <li><strong>Como rastrear vendas sem Pixel:</strong> Na tabela de campanhas (ou no formulário <em>Gerar Link Shopee por Campanha</em>), clique em <strong>Vincular</strong> na campanha desejada, cole o link do produto da Shopee e gere o link curto (ele injeta o <code>sub_id</code> da campanha automaticamente). Cole esse link curto como <strong>URL do Site</strong> no anúncio do Facebook/Instagram.</li>
+              <li>Clique em <strong>Alternar Demo/Real</strong> para sair dos dados de exemplo. Use a chave verde <strong>Status</strong> para pausar anúncios no prejuízo na hora e o botão <strong>Editar</strong> para ajustar o orçamento diário.</li>
+            </ul>
+            <div class="guide-actions">
+              <button type="button" class="btn btn-primary btn-sm guide-jump" data-tab="roi" data-focus="set-ad-account-id">Configurar Campanhas ROI</button>
+            </div>
+          </article>
+
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 4</span>
+              <h3>Atendimento X1 Inteligente (Voz OGG/Opus + Trava Jev)</h3>
+            </div>
+            <ul class="guide-list">
+              <li><strong>Canal WhatsApp:</strong> Escolha <em>X1 via Baileys (QR Code — Grátis / Sem API da Meta)</em> para atender no privado usando opções numeradas (<code>1, 2, 3</code>), ou <em>WhatsApp Cloud API Oficial</em> para botões clicáveis nativos (até 20 letras).</li>
+              <li><strong>Cérebro de IA:</strong> Use <em>Google Gemini</em> / <em>Groq</em> (rápido e leve para qualquer notebook) ou clique nos presets <em>Ollama Local</em> / <em>LM Studio Local</em> para rodar 100% no PC sem API externa.</li>
+              <li><strong>Áudio e Voz Dela:</strong> No PC sem placa de vídeo potente, mantenha <em>Edge-TTS Local (pt-BR-FranciscaNeural)</em> (já funciona de graça como nota de voz real <code>OGG/Opus</code>). Para usar <strong>voz clonada</strong>, suba um áudio <code>.wav</code> limpo (15 a 30s) e ative <em>Voicebox Local</em> (veja <code>INSTALAR_VOZ_LOCAL_WINDOWS.md</code>) ou <em>ElevenLabs</em>. Clique sempre em <strong>Testar Voz Agora</strong> para ouvir antes. Se o motor de voz falhar em algum envio, o sistema entrega o texto automaticamente para nunca perder a venda.</li>
+              <li><strong>Catálogo RAG + Jev (Zero Mentira):</strong> Cadastre cada produto anunciado (preço, link de afiliado e dúvidas como voltagem/tamanho/material). Se o cliente perguntar algo fora do catálogo, a trava <strong>Jev</strong> bloqueia chute e coloca a conversa em <em>Aguardando Humano</em>.</li>
+              <li><strong>Assumir pelo Celular (Human Takeover):</strong> Basta responder o cliente normalmente pelo seu celular que o robô detecta sua resposta e <strong>fica em silêncio por 30 minutos</strong> naquela conversa.</li>
+            </ul>
+            <div class="guide-actions">
+              <button type="button" class="btn btn-primary btn-sm guide-jump" data-tab="x1" data-focus="set-x1-channel">Configurar X1 e Voz</button>
+              <button type="button" class="btn btn-secondary btn-sm guide-jump" data-tab="x1" data-focus="cat-title">Cadastrar Produto no Jev</button>
+            </div>
+          </article>
+
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 5</span>
+              <h3>Grupo de Achadinhos no Piloto Automático</h3>
+            </div>
+            <ul class="guide-list">
+              <li>Recomendado usar um chip dedicado/aquecido.</li>
+              <li>Na aba <strong>Grupo de Achadinhos</strong>, clique em <strong>Conectar / Gerar QR Code</strong> e escaneie no WhatsApp (<em>Aparelhos Conectados</em>).</li>
+              <li>Clique em <strong>Buscar Meus Grupos</strong>, selecione o seu grupo VIP, escolha as palavras-chave (ex.: <code>achadinhos, cozinha, organizador</code>), o horário permitido (<code>8h às 22h</code>), marque <strong>Ativar postagem automática</strong> e salve.</li>
+              <li>Clique em <strong>Disparar 1 Oferta Agora</strong> para testar na hora (o banco SQLite garante que o mesmo produto nunca seja repetido).</li>
+            </ul>
+            <div class="guide-actions">
+              <button type="button" class="btn btn-primary btn-sm guide-jump" data-tab="group" data-focus="btn-wa-connect">Conectar QR Code e Grupo</button>
+            </div>
+          </article>
+
+          <article class="card guide-step-card">
+            <div class="guide-step-head">
+              <span class="step-num">Passo 6</span>
+              <h3>Blindagem Anti-Ban (Proteção do Chip)</h3>
+            </div>
+            <ul class="guide-list">
+              <li><strong>Chip novo (1ª semana):</strong> clique no preset <strong>Conservador</strong> (<code>8 envios/hora</code>, <code>25/dia</code>).</li>
+              <li><strong>Chip em aquecimento (2ª–3ª semana):</strong> use <strong>Moderado</strong> (<code>15/hora</code>, <code>40/dia</code>).</li>
+              <li><strong>Chip antigo/validado:</strong> use <strong>Veterano</strong> (<code>30/hora</code>, <code>120/dia</code>).</li>
+              <li>O sistema já agrupa mensagens seguidas do cliente em 1 resposta só (<em>Debounce</em>), bloqueia envios se o cliente digitar <code>parar</code>/<code>sair</code> (<em>Blacklist</em>) e aciona o freio de emergência (<em>Circuit Breaker</em>) se houver 3 falhas seguidas.</li>
+            </ul>
+            <div class="guide-actions">
+              <button type="button" class="btn btn-primary btn-sm guide-jump" data-tab="antiban" data-focus="set-ab-debounce">Ajustar Blindagem Anti-Ban</button>
+            </div>
+          </article>
+        </div>
+
+        <article class="card stack-md">
+          <h2>Perguntas Rápidas &amp; Solução de Problemas</h2>
+          <div class="guide-faq-grid">
+            <div class="guide-faq-item">
+              <strong>A tabela mostrou valores de exemplo ("Modo Demo")</strong>
+              <p class="muted-sm">Normal na primeira abertura. Assim que salvar seu <code>Meta Ad Account ID</code>, <code>Meta Marketing Token</code> e chaves da Shopee, clique em <strong>Alternar Demo/Real</strong> no topo da aba Campanhas (ROI).</p>
+            </div>
+            <div class="guide-faq-item">
+              <strong>O áudio de voz não tocou ou falhou no cliente</strong>
+              <p class="muted-sm">O sistema nunca deixa o lead sem resposta: se o motor TTS falhar, ele envia a resposta em texto automaticamente e registra no Log. Teste antes em <strong>Testar Voz Agora</strong> (<code>INSTALAR_FACIL_WINDOWS.bat</code> já instala FFmpeg + Edge-TTS).</p>
+            </div>
+            <div class="guide-faq-item">
+              <strong>Fechei a janela preta ou o Windows hibernou</strong>
+              <p class="muted-sm">Sem a janela preta aberta o robô pausa. Ajuste o plano de energia do Windows para <em>Nunca suspender</em> quando conectado na tomada e dê 2 cliques em <code>INICIAR_SISTEMA.bat</code>.</p>
+            </div>
+            <div class="guide-faq-item">
+              <strong>Apareceu alerta vermelho de Circuit Breaker</strong>
+              <p class="muted-sm">Freio acionado após 3 erros seguidos de envio ou queda de QR Code. Confira se o WhatsApp continua conectado na aba <em>Grupo de Achadinhos</em> e clique em <strong>Retomar Envios</strong> na aba <em>Blindagem Anti-Ban</em>.</p>
+            </div>
           </div>
         </article>
       </section>

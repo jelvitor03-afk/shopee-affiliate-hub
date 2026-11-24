@@ -1,9 +1,9 @@
 {
   "project": "Shopee_Affiliate_Hub",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "status": "PASS",
-  "current_step": 7,
-  "updated_at": "2026-11-24T00:34:30Z",
+  "current_step": 8,
+  "updated_at": "2026-11-24T01:42:00Z",
   "steps": [
     {
       "id": 1,
@@ -39,13 +39,19 @@
       "id": 7,
       "name": "Autonomous IVAR Peer Audit & Security Hardening",
       "status": "COMPLETED"
+    },
+    {
+      "id": 8,
+      "name": "In-App Setup Guide, 1-Click Windows Installer & GitHub Release",
+      "status": "COMPLETED"
     }
   ],
   "verification": {
     "typecheck": "PASS (tsc --noEmit)",
     "build": "PASS (tsc)",
-    "tests": "PASS (4/4 tests across hub.test.ts and v2-upgrade.test.ts including IVAR hardening regressions)",
-    "playwright_qa": "PASS (1440x900 & 390x844, 0 console errors, overflowX=false)",
-    "ivar_audit": "COMPLETED (all 5 code/security gaps patched and verified)"
+    "tests": "PASS (4/4 tests across hub.test.ts and v2-upgrade.test.ts including V2.1 guide & installer checks)",
+    "playwright_qa": "PASS (1440x900 & 390x844, 0 console errors, overflowX=false on #tab-guide and #tab-roi)",
+    "ivar_audit": "COMPLETED (security hardening + pre-push secrets scan clean: 0 hits across 37 files)",
+    "github_repo": "https://github.com/jelvitor03-afk/shopee-affiliate-hub"
   }
 }
